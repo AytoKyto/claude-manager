@@ -1391,6 +1391,11 @@ function connectWS() {
       updateSidebarItem(msg.projectId);
       if (state.activeProject === msg.projectId) updateProjectHeader(msg.projectId);
       updateMiniCard(msg.projectId);
+      // Notify todo queue waiters
+      if (msg.status === 'idle' && state._statusWaiters[msg.projectId]) {
+        state._statusWaiters[msg.projectId].forEach(fn => fn());
+        delete state._statusWaiters[msg.projectId];
+      }
     }
   };
 }
@@ -1942,6 +1947,22 @@ async function sendTodoToLog(todoId) {
 
 // Run all pending todos sequentially with user control
 state._todoQueue = null; // { todos, currentIndex, projectId, paused }
+state._statusWaiters = {}; // projectId -> [resolve callbacks]
+
+// Wait for a project to become idle, using WebSocket events (no polling)
+function waitForIdle(projectId, timeoutMs = 300000) {
+  if (state.statuses[projectId] !== 'running') return Promise.resolve();
+  return new Promise((resolve) => {
+    if (!state._statusWaiters[projectId]) state._statusWaiters[projectId] = [];
+    const timer = setTimeout(() => {
+      // Timeout safety — remove waiter and resolve anyway
+      state._statusWaiters[projectId] = (state._statusWaiters[projectId] || []).filter(fn => fn !== resolve);
+      resolve();
+    }, timeoutMs);
+    const wrappedResolve = () => { clearTimeout(timer); resolve(); };
+    state._statusWaiters[projectId].push(wrappedResolve);
+  });
+}
 
 async function runAllTodos() {
   const projectId = state.activeProject;
@@ -1964,18 +1985,26 @@ async function runNextTodo() {
 
   const todo = q.todos[q.currentIndex];
 
-  // Wait if claude is still processing
-  while (state.statuses[q.projectId] === 'running') {
-    await new Promise(r => setTimeout(r, 500));
-  }
+  // Wait if claude is still processing (event-driven, no polling)
+  await waitForIdle(q.projectId);
 
   if (!state._todoQueue) return;
 
   // Send the todo as prompt
-  await authFetch(`/api/send/${q.projectId}`, {
+  const res = await authFetch(`/api/send/${q.projectId}`, {
     method: 'POST',
     body: JSON.stringify({ prompt: todo.text })
   });
+
+  // If send failed (e.g. Claude already running), wait and retry once
+  if (!res.ok) {
+    await waitForIdle(q.projectId, 60000);
+    if (!state._todoQueue) return;
+    await authFetch(`/api/send/${q.projectId}`, {
+      method: 'POST',
+      body: JSON.stringify({ prompt: todo.text })
+    });
+  }
 
   // Mark as done
   todo.done = true;
@@ -1987,14 +2016,8 @@ async function runNextTodo() {
   });
   renderTodoList();
 
-  // Wait for claude to finish
-  await new Promise(resolve => {
-    const check = () => {
-      if (state.statuses[q.projectId] !== 'running') return resolve();
-      setTimeout(check, 500);
-    };
-    setTimeout(check, 1000);
-  });
+  // Wait for claude to finish (event-driven via WebSocket)
+  await waitForIdle(q.projectId);
 
   if (!state._todoQueue) return;
 
