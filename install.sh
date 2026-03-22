@@ -9,7 +9,7 @@ set -e
 # configure un mot de passe, crée un service systemd, et lance le tout.
 # ─────────────────────────────────────────────────────────────────────────────
 
-REPO="https://github.com/mathmusic57/claude-manager.git"
+REPO="https://github.com/AytoKyto/claude-manager.git"
 INSTALL_DIR="$HOME/claude-manager"
 SERVICE_NAME="claude-manager"
 
@@ -107,9 +107,19 @@ else
   PROJECTS_DIR=${PROJECTS_DIR:-$HOME/projets}
 
   # Clé API Anthropic
-  echo -e "${BOLD}ANTHROPIC_API_KEY${NC} (nécessaire pour Claude Code) :"
-  read -rsp "  > " API_KEY
   echo ""
+  echo -e "${BOLD}Comment utilises-tu Claude ?${NC}"
+  echo -e "  1) Abonnement Claude (Max/Pro) — authentification via ${CYAN}claude login${NC}"
+  echo -e "  2) Clé API Anthropic (ANTHROPIC_API_KEY)"
+  read -rp "  > [1/2] " AUTH_MODE
+  AUTH_MODE=${AUTH_MODE:-1}
+
+  API_KEY=""
+  if [ "$AUTH_MODE" = "2" ]; then
+    echo -e "${BOLD}ANTHROPIC_API_KEY${NC} :"
+    read -rsp "  > " API_KEY
+    echo ""
+  fi
 
   cat > "$INSTALL_DIR/.env" <<EOF
 PORT=$CUSTOM_PORT
@@ -126,6 +136,20 @@ EOF
   mkdir -p "$PROJECTS_DIR"
 
   ok "Configuration sauvée dans .env"
+
+  # Si abonnement, lancer claude login
+  if [ "$AUTH_MODE" = "1" ]; then
+    echo ""
+    info "Authentification avec ton compte Anthropic..."
+    info "Un lien va s'ouvrir — connecte-toi dans ton navigateur."
+    echo ""
+    claude login
+    if [ $? -eq 0 ]; then
+      ok "Authentification réussie"
+    else
+      warn "Authentification échouée — tu pourras relancer 'claude login' plus tard"
+    fi
+  fi
 fi
 
 # ── 7. Service systemd (Linux uniquement) ────────────────────────────────────

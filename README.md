@@ -46,7 +46,7 @@
 ## Quick Start
 
 ```bash
-git clone https://github.com/mathmusic57/claude-manager.git
+git clone https://github.com/AytoKyto/claude-manager.git
 cd claude-manager
 npm install
 node server.js
@@ -59,7 +59,7 @@ Open **http://localhost:3131** and configure your projects directory.
 ### One-line install (Linux / macOS)
 
 ```bash
-curl -sL https://raw.githubusercontent.com/mathmusic57/claude-manager/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/AytoKyto/claude-manager/main/install.sh | bash
 ```
 
 The install script will:
@@ -72,7 +72,7 @@ The install script will:
 ### Manual install
 
 ```bash
-git clone https://github.com/mathmusic57/claude-manager.git ~/claude-manager
+git clone https://github.com/AytoKyto/claude-manager.git ~/claude-manager
 cd ~/claude-manager
 npm install
 cp .env.example .env  # edit with your values
@@ -139,13 +139,17 @@ claude --version
 **Option A — One-line installer** (interactive, sets up everything):
 
 ```bash
-curl -sL https://raw.githubusercontent.com/mathmusic57/claude-manager/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/AytoKyto/claude-manager/main/install.sh | bash
 ```
+
+The installer will ask you to choose between:
+1. **Claude subscription (Max/Pro)** — runs `claude login` to authenticate via your browser
+2. **API key** — paste your `ANTHROPIC_API_KEY`
 
 **Option B — Manual**:
 
 ```bash
-git clone https://github.com/mathmusic57/claude-manager.git ~/claude-manager
+git clone https://github.com/AytoKyto/claude-manager.git ~/claude-manager
 cd ~/claude-manager
 npm install
 ```
@@ -157,8 +161,17 @@ cat > ~/claude-manager/.env << 'EOF'
 PORT=3131
 HOST=127.0.0.1
 AUTH_SECRET=change-me-to-a-strong-password
-ANTHROPIC_API_KEY=sk-ant-your-key-here
 EOF
+```
+
+Then authenticate Claude Code:
+
+```bash
+# Option 1: Claude subscription (Max/Pro) — no API key needed
+claude login
+
+# Option 2: API key — add to .env
+echo "ANTHROPIC_API_KEY=sk-ant-your-key-here" >> ~/claude-manager/.env
 ```
 
 > `HOST=127.0.0.1` because Caddy will proxy — no need to expose Node.js directly.
@@ -291,8 +304,8 @@ HOST=0.0.0.0
 # Authentication (leave empty to disable)
 AUTH_SECRET=your-secret-password
 
-# Anthropic API key (required by Claude Code)
-ANTHROPIC_API_KEY=sk-ant-...
+# Anthropic API key (only if not using claude login)
+ANTHROPIC_API_KEY=
 
 # SSL/TLS (leave empty if behind a reverse proxy)
 SSL_CERT=/path/to/cert.pem
@@ -304,9 +317,16 @@ SSL_KEY=/path/to/key.pem
 | `PORT` | `3131` | Server port |
 | `HOST` | `0.0.0.0` | Bind address |
 | `AUTH_SECRET` | *(empty)* | Password for the web UI. Empty = no auth |
-| `ANTHROPIC_API_KEY` | *(required)* | Your Anthropic API key |
+| `ANTHROPIC_API_KEY` | *(empty)* | API key. Not needed if authenticated via `claude login` |
 | `SSL_CERT` | *(empty)* | Path to SSL certificate. Falls back to HTTP on error |
 | `SSL_KEY` | *(empty)* | Path to SSL private key |
+
+### Authentication with Claude Code
+
+Two options:
+
+- **Claude subscription (Max/Pro)** — run `claude login` on the server, authenticate via browser. No API key needed.
+- **API key** — set `ANTHROPIC_API_KEY` in `.env`. For API billing.
 
 ## Usage
 
@@ -384,7 +404,7 @@ Connects automatically on page load. Broadcasts:
 
 - **Node.js** >= 18
 - **Claude Code** CLI installed and in PATH (`npm install -g @anthropic-ai/claude-code`)
-- A valid **Anthropic API key**
+- A **Claude subscription** (Max/Pro) or an **Anthropic API key**
 
 ## Contributing
 
