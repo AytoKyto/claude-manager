@@ -1,0 +1,2108 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Geist:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --bg2: #131316;
+    --bg3: #1a1a1e;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --text: #e8e8ea;
+    --muted: #666672;
+    --accent: #f97316;
+    --accent2: #fb923c;
+    --green: #22c55e;
+    --red: #ef4444;
+    --amber: #f59e0b;
+    --blue: #3b82f6;
+    --purple: #a855f7;
+    --mono: 'Geist Mono', monospace;
+    --sans: 'Geist', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* TOP BAR */
+  .topbar {
+    display: flex;
+    align-items: center;
+    padding: 0 1.25rem;
+    height: 48px;
+    border-bottom: 1px solid var(--border);
+    gap: 1rem;
+    flex-shrink: 0;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .logo-dot {
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .thinking-indicator {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 8px 12px;
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .thinking-dot {
+    width: 4px; height: 4px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: thinking 1.4s infinite;
+  }
+  .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+  .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes thinking {
+    0%,80%,100% { opacity: 0.2; transform: scale(0.8); }
+    40% { opacity: 1; transform: scale(1.2); }
+  }
+
+  .topbar-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .ws-indicator {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  .ws-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--red);
+    transition: background 0.3s;
+  }
+
+  .ws-dot.connected { background: var(--green); }
+
+  .btn-settings {
+    background: none;
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: var(--sans);
+    transition: all 0.15s;
+  }
+
+  .btn-settings:hover { border-color: var(--border2); color: var(--text); background: var(--bg3); }
+
+  /* MAIN LAYOUT */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    width: 220px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow-y: auto;
+  }
+
+  .sidebar-section {
+    padding: 0.75rem 1rem 0.5rem;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .project-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 1rem;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: all 0.15s;
+  }
+
+  .project-item:hover { background: var(--bg2); }
+  .project-item.dragging { opacity: 0.4; }
+  .project-item.drag-over { background: rgba(249,115,22,0.08); border-left-color: var(--accent); }
+  .project-item.active { border-left-color: var(--accent); background: var(--bg2); }
+
+  .project-status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+    transition: background 0.3s;
+  }
+
+  .project-status-dot.running { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .project-status-dot.idle { background: var(--muted); }
+
+  .project-item-name {
+    font-size: 13px;
+    color: var(--text);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .project-item-path {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .sidebar-footer {
+    margin-top: auto;
+    padding: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .btn-add-project {
+    width: 100%;
+    background: none;
+    border: 1px dashed var(--border2);
+    color: var(--muted);
+    padding: 7px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: var(--sans);
+    transition: all 0.15s;
+  }
+
+  .btn-add-project:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* CONTENT */
+  .content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* EMPTY STATE */
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: var(--muted);
+  }
+
+  .empty-state-icon {
+    font-size: 32px;
+    opacity: 0.4;
+  }
+
+  .empty-state p { font-size: 13px; }
+
+  /* PROJECT VIEW */
+  .project-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* PROJECT HEADER */
+  .project-header {
+    display: flex;
+    align-items: center;
+    padding: 0.875rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+    flex-shrink: 0;
+  }
+
+  .project-title {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .project-path-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--bg3);
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+
+  .status-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 500;
+  }
+
+  .status-badge.running {
+    background: rgba(34,197,94,0.12);
+    color: var(--green);
+    border: 1px solid rgba(34,197,94,0.25);
+  }
+
+  .status-badge.idle {
+    background: rgba(102,102,114,0.12);
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+
+  .header-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: var(--sans);
+    cursor: pointer;
+    border: 1px solid var(--border2);
+    background: none;
+    color: var(--text);
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .btn:hover { background: var(--bg3); }
+
+  .btn-start {
+    background: rgba(34,197,94,0.1);
+    border-color: rgba(34,197,94,0.3);
+    color: var(--green);
+  }
+
+  .btn-start:hover { background: rgba(34,197,94,0.18); }
+
+  .btn-stop {
+    background: rgba(239,68,68,0.1);
+    border-color: rgba(239,68,68,0.3);
+    color: var(--red);
+  }
+
+  .btn-stop:hover { background: rgba(239,68,68,0.18); }
+
+  .btn-danger-tag {
+    font-size: 10px;
+    background: rgba(249,115,22,0.12);
+    border: 1px solid rgba(249,115,22,0.25);
+    color: var(--accent);
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-family: var(--mono);
+  }
+
+  /* TABS */
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .tab {
+    padding: 10px 1.25rem;
+    font-size: 12px;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+  .tab-count {
+    background: var(--bg3);
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    color: var(--muted);
+  }
+
+  .tab-count.has-items {
+    background: rgba(249,115,22,0.15);
+    color: var(--accent);
+  }
+
+  /* TAB CONTENT */
+  .tab-content {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* LOGS */
+  .log-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem 1.25rem;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.7;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .log-container::-webkit-scrollbar { width: 4px; }
+  .log-container::-webkit-scrollbar-track { background: transparent; }
+  .log-container::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .log-line { display: flex; gap: 10px; align-items: flex-start; }
+  .log-ts { color: var(--muted); font-size: 10px; flex-shrink: 0; padding-top: 2px; }
+  .log-text { color: var(--text); white-space: pre-wrap; word-break: break-all; flex: 1; }
+  .log-text.stderr { color: var(--amber); }
+  .log-text.prompt { color: var(--accent); font-weight: 500; }
+  .log-text.assistant { color: var(--text); }
+  .log-text.assistant p { margin: 0.3em 0; }
+  .log-text.assistant p:first-child { margin-top: 0; }
+  .log-text.assistant p:last-child { margin-bottom: 0; }
+  .log-text.assistant code { background: var(--bg); padding: 2px 5px; border-radius: 3px; font-family: 'Geist Mono', monospace; font-size: 12px; }
+  .log-text.assistant pre { background: var(--bg); padding: 10px 12px; border-radius: 6px; overflow-x: auto; margin: 0.5em 0; }
+  .log-text.assistant pre code { background: none; padding: 0; font-size: 12px; }
+  .log-text.assistant ul, .log-text.assistant ol { margin: 0.3em 0; padding-left: 1.5em; }
+  .log-text.assistant li { margin: 0.15em 0; }
+  .log-text.assistant strong { color: #fff; }
+  .log-text.assistant h1, .log-text.assistant h2, .log-text.assistant h3 { margin: 0.5em 0 0.3em; font-size: 14px; color: #fff; }
+  .log-text.assistant blockquote { border-left: 2px solid var(--muted); padding-left: 10px; margin: 0.3em 0; color: var(--muted); }
+  .log-text.tool_use { color: #60a5fa; font-size: 12px; font-family: 'Geist Mono', monospace; background: rgba(96,165,250,0.08); padding: 4px 8px; border-radius: 4px; border-left: 2px solid #60a5fa; }
+  .log-text.system { color: var(--muted); font-size: 11px; font-style: italic; }
+  .log-text.result { color: var(--green); font-size: 12px; font-weight: 500; }
+
+  .log-empty {
+    color: var(--muted);
+    text-align: center;
+    padding: 3rem;
+    font-size: 12px;
+  }
+
+  /* PROMPT INPUT */
+  .prompt-area {
+    border-top: 1px solid var(--border);
+    padding: 0.875rem 1.25rem;
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    flex-shrink: 0;
+  }
+
+  .prompt-input {
+    flex: 1;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    resize: none;
+    min-height: 38px;
+    max-height: 120px;
+    outline: none;
+    transition: border-color 0.15s;
+    line-height: 1.5;
+  }
+
+  .prompt-input:focus { border-color: rgba(249,115,22,0.4); }
+  .prompt-input::placeholder { color: var(--muted); }
+
+  .btn-send {
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: var(--sans);
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.15s;
+    height: 38px;
+    flex-shrink: 0;
+  }
+
+  .btn-send:hover { background: var(--accent2); }
+  .btn-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* TODOS */
+  .todos-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem 1.25rem;
+  }
+
+  .todo-add {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 1rem;
+  }
+
+  .todo-input {
+    flex: 1;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    padding: 7px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: var(--sans);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .todo-input:focus { border-color: rgba(249,115,22,0.4); }
+  .todo-input::placeholder { color: var(--muted); }
+
+  .btn-todo-add {
+    background: rgba(249,115,22,0.12);
+    border: 1px solid rgba(249,115,22,0.25);
+    color: var(--accent);
+    padding: 7px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: var(--sans);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-todo-add:hover { background: rgba(249,115,22,0.2); }
+
+  .btn-run-all {
+    background: rgba(34,197,94,0.12);
+    border: 1px solid rgba(34,197,94,0.25);
+    color: var(--green);
+    padding: 7px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .btn-run-all:hover { background: rgba(34,197,94,0.2); }
+
+  .todo-queue-bar {
+    background: var(--bg2);
+    border: 1px solid rgba(249,115,22,0.2);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin: 0 16px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .todo-queue-info { display: flex; align-items: center; gap: 10px; }
+  .todo-queue-progress { color: var(--accent); font-weight: 600; font-size: 12px; }
+  .todo-queue-next { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .todo-queue-actions { display: flex; gap: 6px; align-items: center; }
+  .todo-queue-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+  }
+  .todo-queue-input:focus { border-color: var(--accent); }
+  .btn-queue-continue {
+    background: rgba(34,197,94,0.12);
+    border: 1px solid rgba(34,197,94,0.25);
+    color: var(--green);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .btn-queue-continue:hover { background: rgba(34,197,94,0.2); }
+  .btn-queue-stop {
+    background: rgba(239,68,68,0.12);
+    border: 1px solid rgba(239,68,68,0.25);
+    color: var(--red);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .btn-queue-stop:hover { background: rgba(239,68,68,0.2); }
+
+  .todo-list { display: flex; flex-direction: column; gap: 6px; }
+
+  .todo-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    transition: all 0.15s;
+    cursor: default;
+  }
+  .todo-item.dragging { opacity: 0.4; }
+  .todo-item.drag-over { border-color: var(--accent); background: rgba(249,115,22,0.05); }
+  .todo-drag-handle {
+    cursor: grab;
+    color: var(--muted);
+    opacity: 0.3;
+    font-size: 14px;
+    user-select: none;
+    line-height: 1;
+  }
+  .todo-item:hover .todo-drag-handle { opacity: 0.7; }
+  .todo-drag-handle:active { cursor: grabbing; }
+
+  .todo-item:hover { border-color: var(--border2); }
+
+  .todo-check {
+    width: 16px; height: 16px;
+    border: 1.5px solid var(--border2);
+    border-radius: 4px;
+    background: none;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    padding: 0;
+  }
+
+  .todo-check.checked {
+    background: var(--green);
+    border-color: var(--green);
+  }
+
+  .todo-check.checked::after {
+    content: '✓';
+    color: #000;
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .todo-text {
+    flex: 1;
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.4;
+  }
+
+  .todo-text.done {
+    text-decoration: line-through;
+    color: var(--muted);
+  }
+
+  .todo-send-btn {
+    opacity: 0;
+    background: rgba(59,130,246,0.1);
+    border: 1px solid rgba(59,130,246,0.25);
+    color: var(--blue);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: var(--mono);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .todo-item:hover .todo-send-btn { opacity: 1; }
+  .todo-send-btn:hover { background: rgba(59,130,246,0.2); }
+
+  .todo-pause-btn {
+    opacity: 0.3;
+    background: none;
+    border: 1px solid transparent;
+    color: var(--muted);
+    padding: 2px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s;
+  }
+  .todo-item:hover .todo-pause-btn { opacity: 0.6; }
+  .todo-pause-btn.active {
+    opacity: 1;
+    color: var(--accent);
+    background: rgba(249,115,22,0.1);
+    border-color: rgba(249,115,22,0.25);
+  }
+  .todo-pause-btn:hover { opacity: 1; }
+
+  .todo-del-btn {
+    opacity: 0;
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.15s;
+  }
+
+  .todo-item:hover .todo-del-btn { opacity: 1; }
+  .todo-del-btn:hover { color: var(--red); }
+
+  .todo-empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 3rem;
+    font-size: 12px;
+  }
+
+  /* SETTINGS MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-overlay.visible { display: flex; }
+
+  .modal {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+    width: 480px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .modal-title {
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-label { font-size: 12px; color: var(--muted); }
+
+  .form-input {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: var(--mono);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .form-input:focus { border-color: rgba(249,115,22,0.4); }
+
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  .btn-primary {
+    background: var(--accent);
+    border-color: transparent;
+    color: #fff;
+    font-weight: 500;
+  }
+
+  .btn-primary:hover { background: var(--accent2); }
+
+  .project-list-manage {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .project-manage-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--bg3);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+  }
+
+  .project-manage-name {
+    flex: 1;
+    font-size: 13px;
+  }
+
+  .project-manage-path {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .btn-remove {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 5px;
+    border-radius: 4px;
+    transition: color 0.15s;
+  }
+
+  .btn-remove:hover { color: var(--red); }
+
+  .scan-results {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+
+  .scan-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .scan-item:hover { border-color: rgba(249,115,22,0.3); background: rgba(249,115,22,0.05); }
+  .scan-item.selected { border-color: rgba(249,115,22,0.5); background: rgba(249,115,22,0.08); }
+
+  .scan-item-check {
+    width: 14px; height: 14px;
+    border: 1.5px solid var(--border2);
+    border-radius: 3px;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+
+  .scan-item.selected .scan-item-check {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  /* ── Mobile hamburger ─────────────────────────────────────────────────── */
+  .mobile-menu-btn {
+    display: none;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 90;
+  }
+  .sidebar-overlay.visible { display: block; }
+
+  .mobile-back-btn {
+    display: none;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-right: 8px;
+  }
+
+  /* ── Responsive ──────────────────────────────────────────────────────── */
+  @media (max-width: 768px) {
+    .mobile-menu-btn { display: block; }
+    .mobile-back-btn { display: none; }
+
+    .topbar {
+      padding: 0 0.75rem;
+      height: 44px;
+      gap: 8px;
+    }
+    .topbar .logo { font-size: 13px; gap: 6px; }
+    .btn-danger-tag { display: none; }
+    .btn-settings { font-size: 11px; padding: 5px 10px; }
+
+    .main {
+      position: relative;
+    }
+
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 280px;
+      z-index: 100;
+      background: var(--bg);
+      border-right: 1px solid var(--border);
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+    }
+    .sidebar.open {
+      transform: translateX(0);
+    }
+
+    .content {
+      width: 100%;
+    }
+
+    /* Project view */
+    .project-header {
+      flex-wrap: wrap;
+      gap: 6px !important;
+      padding: 10px 12px !important;
+    }
+    .project-title { font-size: 14px !important; }
+    .project-path-badge { display: none; }
+
+    .tabs { padding: 0 8px !important; }
+    .tab { padding: 8px 12px !important; font-size: 11px !important; }
+
+    /* Logs */
+    .log-container { padding: 8px !important; }
+    .log-line { gap: 6px !important; }
+    .log-ts { font-size: 9px !important; }
+    .log-text { font-size: 12px !important; }
+    .log-text.assistant pre { font-size: 11px !important; }
+
+    /* Prompt area */
+    .prompt-area { padding: 8px !important; gap: 6px !important; }
+    .prompt-input { font-size: 13px !important; padding: 8px 10px !important; }
+    .btn-send { padding: 8px 14px !important; font-size: 12px !important; }
+
+    /* Thinking indicator */
+    .thinking-indicator { padding: 6px 10px !important; font-size: 11px !important; }
+
+    /* Todos */
+    .todos-container { padding: 8px !important; }
+    .todo-add { flex-wrap: wrap; gap: 6px !important; }
+    .todo-input { min-width: 0 !important; flex: 1 !important; font-size: 13px !important; }
+    .todo-item { padding: 8px 10px !important; gap: 6px !important; }
+    .todo-text { font-size: 12px !important; }
+    .todo-send-btn, .todo-pause-btn { opacity: 1 !important; }
+    .todo-drag-handle { opacity: 0.5 !important; }
+
+    /* Queue bar */
+    .todo-queue-bar { margin: 0 8px 6px !important; padding: 8px 10px !important; }
+    .todo-queue-actions { flex-wrap: wrap; }
+    .todo-queue-input { min-width: 120px; }
+
+    /* Settings modal */
+    .modal { width: 95vw !important; max-height: 85vh !important; overflow-y: auto; padding: 16px !important; }
+
+    /* Empty state */
+    .empty-state { padding: 2rem !important; }
+    .empty-state-icon { font-size: 36px !important; }
+  }
+
+  @media (max-width: 380px) {
+    .topbar .logo span { display: none; }
+    .ws-indicator span { display: none; }
+    .btn-settings { padding: 5px 8px; }
+    .btn-run-all { font-size: 11px; padding: 6px 10px; }
+    .header-actions button { font-size: 11px !important; padding: 5px 10px !important; }
+  }
+
+  /* TOAST NOTIFICATIONS */
+  #toastContainer {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+  }
+
+  .toast {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 12px;
+    font-family: var(--sans);
+    color: var(--text);
+    pointer-events: auto;
+    animation: toastIn 0.2s ease;
+    max-width: 360px;
+    word-break: break-word;
+  }
+
+  .toast.error { border-color: rgba(239,68,68,0.4); color: var(--red); }
+  .toast.success { border-color: rgba(34,197,94,0.4); color: var(--green); }
+  .toast.info { border-color: rgba(249,115,22,0.4); color: var(--accent); }
+
+  .toast.removing { animation: toastOut 0.2s ease forwards; }
+
+  @keyframes toastIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes toastOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(20px); } }
+
+  /* LOGIN SCREEN */
+  .login-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .login-overlay.hidden { display: none; }
+
+  .login-box {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+    padding: 2rem;
+    width: 340px;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .login-title {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--accent);
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .login-error {
+    color: var(--red);
+    font-size: 12px;
+    text-align: center;
+    display: none;
+  }
+
+  .login-error.visible { display: block; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div class="login-overlay hidden" id="loginOverlay">
+  <div class="login-box">
+    <div class="login-title">
+      <div class="logo-dot"></div>
+      claude manager
+    </div>
+    <div class="form-group">
+      <label class="form-label">Mot de passe</label>
+      <input class="form-input" id="loginPassword" type="password" placeholder="AUTH_SECRET"
+             onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div class="login-error" id="loginError">Mot de passe incorrect</div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doLogin()">Connexion</button>
+  </div>
+</div>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <button class="mobile-menu-btn" onclick="toggleSidebar()">☰</button>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    claude manager
+  </div>
+  <span class="btn-danger-tag">--dangerously-skip-permissions</span>
+  <div class="topbar-right">
+    <div class="ws-indicator">
+      <div class="ws-dot" id="wsDot"></div>
+      <span id="wsLabel">disconnected</span>
+    </div>
+    <button class="btn-settings" onclick="openSettings()">⚙ config</button>
+    <button class="btn-settings" id="logoutBtn" onclick="logout()">⏻ déconnexion</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+  <!-- SIDEBAR -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-section">projets</div>
+    <div id="projectList"></div>
+    <div class="sidebar-footer">
+      <button class="btn-add-project" onclick="openSettings()">+ ajouter un projet</button>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content" id="mainContent">
+    <div class="empty-state" id="emptyState">
+      <div class="empty-state-icon">⌘</div>
+      <p>Sélectionne un projet</p>
+      <p style="font-size:11px;color:var(--muted);margin-top:4px">ou configure tes projets via ⚙ config</p>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-title">Configuration</div>
+
+    <div class="form-group">
+      <label class="form-label">Dossier parent des projets</label>
+      <input class="form-input" id="projectsDirInput" placeholder="/Users/toi/projets" />
+    </div>
+
+    <div class="form-group">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <label class="form-label" style="margin:0">Dépôts git détectés</label>
+        <button class="btn" style="font-size:11px;padding:4px 10px" onclick="scanRepos()">scanner</button>
+      </div>
+      <div class="scan-results" id="scanResults">
+        <div style="color:var(--muted);font-size:12px;padding:8px">Lance un scan pour détecter les repos</div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Projets actifs</label>
+      <div class="project-list-manage" id="projectListManage">
+        <div style="color:var(--muted);font-size:12px;padding:8px">Aucun projet configuré</div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn" onclick="closeSettings()">annuler</button>
+      <button class="btn btn-primary" onclick="saveSettings()">enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let state = {
+  projects: [],
+  statuses: {},
+  logs: {},
+  todos: {},
+  activeProject: null,
+  activeTab: 'logs',
+  scanResults: [],
+  selectedScanItems: new Set()
+};
+
+// ── Auth helpers ───────────────────────────────────────────────────────────
+function getAuthToken() {
+  return localStorage.getItem('cm_auth_token') || '';
+}
+
+function authHeaders(extra = {}) {
+  const h = { 'Content-Type': 'application/json', ...extra };
+  const token = getAuthToken();
+  if (token) h['x-auth-token'] = token;
+  return h;
+}
+
+function authFetch(url, opts = {}) {
+  opts.headers = authHeaders(opts.headers || {});
+  return fetch(url, opts).then(r => {
+    if (r.status === 401) {
+      localStorage.removeItem('cm_auth_token');
+      showLogin();
+      throw new Error('Unauthorized');
+    }
+    if (!r.ok && r.status !== 401) {
+      r.clone().json().then(data => {
+        showToast(data.error || `Erreur ${r.status}`, 'error');
+      }).catch(() => {
+        showToast(`Erreur ${r.status}`, 'error');
+      });
+    }
+    return r;
+  }).catch(err => {
+    if (err.message !== 'Unauthorized') {
+      showToast('Erreur réseau', 'error');
+    }
+    throw err;
+  });
+}
+
+async function doLogin() {
+  const pw = document.getElementById('loginPassword').value;
+  const res = await fetch('/api/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: pw })
+  });
+  if (res.ok) {
+    localStorage.setItem('cm_auth_token', pw);
+    document.getElementById('loginOverlay').classList.add('hidden');
+    document.getElementById('loginError').classList.remove('visible');
+    document.getElementById('logoutBtn').style.display = '';
+    init();
+  } else {
+    document.getElementById('loginError').classList.add('visible');
+  }
+}
+
+function showLogin() {
+  document.getElementById('loginOverlay').classList.remove('hidden');
+  document.getElementById('loginPassword').value = '';
+  document.getElementById('loginPassword').focus();
+}
+
+function logout() {
+  localStorage.removeItem('cm_auth_token');
+  showLogin();
+  if (ws) ws.close();
+}
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+let ws;
+
+// ── Mobile sidebar ─────────────────────────────────────────────────────────
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('visible');
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('visible');
+}
+
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const token = getAuthToken();
+  const wsUrl = token ? `${proto}//${location.host}?token=${encodeURIComponent(token)}` : `${proto}//${location.host}`;
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    document.getElementById('wsDot').classList.add('connected');
+    document.getElementById('wsLabel').textContent = 'connecté';
+  };
+
+  ws.onclose = () => {
+    document.getElementById('wsDot').classList.remove('connected');
+    document.getElementById('wsLabel').textContent = 'disconnected';
+    setTimeout(connectWS, 2000);
+  };
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    console.log('[WS]', msg.type, msg.projectId, msg.logType || msg.status || '', (msg.line || '').substring(0, 80));
+
+    if (msg.type === 'log') {
+      if (!state.logs[msg.projectId]) state.logs[msg.projectId] = [];
+      const text = msg.text || msg.line || '';
+      state.logs[msg.projectId].push({ text, type: msg.logType, ts: Date.now() });
+      if (state.logs[msg.projectId].length > 500) state.logs[msg.projectId].shift();
+      if (state.activeProject === msg.projectId && state.activeTab === 'logs') {
+        appendLog(msg.projectId, text, msg.logType);
+      }
+      updateMiniCard(msg.projectId);
+    }
+
+    if (msg.type === 'status') {
+      state.statuses[msg.projectId] = msg.status;
+      updateSidebarItem(msg.projectId);
+      if (state.activeProject === msg.projectId) updateProjectHeader(msg.projectId);
+      updateMiniCard(msg.projectId);
+    }
+  };
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+async function checkAuthAndInit() {
+  // Check if auth is required
+  try {
+    const res = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: getAuthToken() })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      document.getElementById('loginOverlay').classList.add('hidden');
+      // Afficher le bouton déconnexion si l'auth est activée
+      if (data.authRequired !== false) {
+        document.getElementById('logoutBtn').style.display = '';
+      }
+      init();
+    } else {
+      showLogin();
+    }
+  } catch (e) {
+    // No auth required or server error, try to init anyway
+    init();
+  }
+}
+
+async function init() {
+  const config = await authFetch('/api/config').then(r => r.json());
+  state.projects = config.projects || [];
+  const statuses = await authFetch('/api/status').then(r => r.json());
+  state.statuses = statuses;
+  renderSidebar();
+  connectWS();
+  if (state.projects.length > 0) selectProject(state.projects[0].id);
+}
+
+// ── Sidebar ────────────────────────────────────────────────────────────────
+function renderSidebar() {
+  const el = document.getElementById('projectList');
+  if (state.projects.length === 0) {
+    el.innerHTML = `<div style="padding:0.75rem 1rem;color:var(--muted);font-size:12px">Aucun projet</div>`;
+    return;
+  }
+  el.innerHTML = state.projects.map(p => `
+    <div class="project-item ${state.activeProject === p.id ? 'active' : ''}"
+         id="sidebar-${p.id}" onclick="selectProject('${p.id}')"
+         draggable="true"
+         ondragstart="onProjectDragStart(event, '${p.id}')"
+         ondragover="onProjectDragOver(event)"
+         ondragenter="onProjectDragEnter(event)"
+         ondragleave="onProjectDragLeave(event)"
+         ondrop="onProjectDrop(event, '${p.id}')">
+      <div class="project-status-dot ${state.statuses[p.id] === 'running' ? 'running' : 'idle'}"
+           id="dot-${p.id}"></div>
+      <div>
+        <div class="project-item-name">${escapeHtml(p.name)}</div>
+        <div class="project-item-path">${escapeHtml(p.path.replace(/^\/Users\/[^/]+|^\/home\/[^/]+/, '~'))}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Drag & drop projects ───────────────────────────────────────────────────
+let _dragProjectId = null;
+
+function onProjectDragStart(e, projectId) {
+  _dragProjectId = projectId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.target.classList.add('dragging');
+}
+
+function onProjectDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+}
+
+function onProjectDragEnter(e) {
+  const item = e.target.closest('.project-item');
+  if (item) item.classList.add('drag-over');
+}
+
+function onProjectDragLeave(e) {
+  const item = e.target.closest('.project-item');
+  if (item) item.classList.remove('drag-over');
+}
+
+async function onProjectDrop(e, targetId) {
+  e.preventDefault();
+  const item = e.target.closest('.project-item');
+  if (item) item.classList.remove('drag-over');
+
+  if (!_dragProjectId || _dragProjectId === targetId) return;
+
+  const fromIdx = state.projects.findIndex(p => p.id === _dragProjectId);
+  const toIdx = state.projects.findIndex(p => p.id === targetId);
+  if (fromIdx === -1 || toIdx === -1) return;
+
+  const [moved] = state.projects.splice(fromIdx, 1);
+  state.projects.splice(toIdx, 0, moved);
+  _dragProjectId = null;
+
+  renderSidebar();
+
+  // Persist new order
+  await authFetch('/api/config', {
+    method: 'POST',
+    body: JSON.stringify({ projects: state.projects })
+  });
+}
+
+function updateSidebarItem(projectId) {
+  const dot = document.getElementById(`dot-${projectId}`);
+  if (dot) {
+    dot.className = `project-status-dot ${state.statuses[projectId] === 'running' ? 'running' : 'idle'}`;
+  }
+}
+
+// ── Select project ─────────────────────────────────────────────────────────
+async function selectProject(projectId) {
+  state.activeProject = projectId;
+  state.activeTab = 'logs';
+  closeSidebar();
+
+  document.querySelectorAll('.project-item').forEach(el => el.classList.remove('active'));
+  const sidebarItem = document.getElementById(`sidebar-${projectId}`);
+  if (sidebarItem) sidebarItem.classList.add('active');
+
+  // Load logs & todos
+  const [logsData, todosData] = await Promise.all([
+    authFetch(`/api/logs/${projectId}`).then(r => r.json()),
+    authFetch(`/api/todos/${projectId}`).then(r => r.json())
+  ]);
+  state.logs[projectId] = logsData.logs || [];
+  state.todos[projectId] = todosData.todos || [];
+
+  renderProjectView();
+}
+
+// ── Project View ───────────────────────────────────────────────────────────
+function renderProjectView() {
+  const project = state.projects.find(p => p.id === state.activeProject);
+  if (!project) return;
+
+  const status = state.statuses[project.id] || 'idle';
+  const todos = state.todos[project.id] || [];
+  const pendingTodos = todos.filter(t => !t.done).length;
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="project-view">
+      <div class="project-header" id="projectHeader">
+        <div class="project-status-dot ${status === 'running' ? 'running' : 'idle'}" id="headerDot" style="width:8px;height:8px"></div>
+        <span class="project-title">${escapeHtml(project.name)}</span>
+        <span class="project-path-badge">${escapeHtml(project.path)}</span>
+        <span class="status-badge ${status}" id="statusBadge">${status}</span>
+        <div class="header-actions">
+          ${status === 'running'
+            ? `<button class="btn btn-stop" onclick="stopProject('${project.id}')">■ stop</button>`
+            : ''
+          }
+        </div>
+      </div>
+
+      <div class="tabs">
+        <div class="tab ${state.activeTab === 'logs' ? 'active' : ''}" onclick="switchTab('logs')">
+          logs
+        </div>
+        <div class="tab ${state.activeTab === 'todos' ? 'active' : ''}" onclick="switchTab('todos')">
+          todos
+          <span class="tab-count ${pendingTodos > 0 ? 'has-items' : ''}">${pendingTodos || todos.length}</span>
+        </div>
+      </div>
+
+      <div class="tab-content" id="tabContent">
+        ${state.activeTab === 'logs' ? renderLogsTab() : renderTodosTab()}
+      </div>
+
+      ${state.activeTab === 'logs' ? renderPromptArea(project.id, status) : ''}
+    </div>
+  `;
+
+  if (state.activeTab === 'logs') scrollLogsToBottom();
+}
+
+function renderLogsTab() {
+  const logs = state.logs[state.activeProject] || [];
+  if (logs.length === 0) {
+    return `<div class="log-container" id="logContainer"><div class="log-empty" id="logEmpty">Aucun log — envoie un prompt pour démarrer</div></div>`;
+  }
+  return `<div class="log-container" id="logContainer">
+    ${logs.map(l => `
+      <div class="log-line">
+        <span class="log-ts">${formatTime(l.ts)}</span>
+        <span class="log-text ${l.type}">${l.type === 'assistant' ? renderMd(l.text) : escapeHtml(l.text)}</span>
+      </div>
+    `).join('')}
+  </div>`;
+}
+
+function renderTodosTab() {
+  const todos = state.todos[state.activeProject] || [];
+  const pendingCount = todos.filter(t => !t.done).length;
+  return `<div class="todos-container">
+    <div class="todo-add">
+      <input class="todo-input" id="todoInput" placeholder="Ajouter une tâche pour Claude..."
+             onkeydown="if(event.key==='Enter')addTodo()">
+      <button class="btn-todo-add" onclick="addTodo()">+ ajouter</button>
+      ${pendingCount > 0 ? `<button class="btn-run-all" onclick="runAllTodos()">▶ Lancer tout (${pendingCount})</button>` : ''}
+    </div>
+    <div class="todo-list" id="todoList">
+      ${todos.length === 0
+        ? `<div class="todo-empty">Aucune tâche — ajoute des todos à envoyer à Claude</div>`
+        : todos.map(t => renderTodoItem(t)).join('')}
+    </div>
+  </div>`;
+}
+
+function renderTodoItem(t) {
+  const waitForUser = t.waitForUser ?? false;
+  return `<div class="todo-item" id="todo-${t.id}" draggable="true"
+              ondragstart="onTodoDragStart(event, '${t.id}')"
+              ondragover="onTodoDragOver(event)"
+              ondragenter="onTodoDragEnter(event)"
+              ondragleave="onTodoDragLeave(event)"
+              ondrop="onTodoDrop(event, '${t.id}')">
+    <span class="todo-drag-handle">⠿</span>
+    <button class="todo-check ${t.done ? 'checked' : ''}" onclick="toggleTodo('${t.id}')"></button>
+    <span class="todo-text ${t.done ? 'done' : ''}">${escapeHtml(t.text)}</span>
+    <button class="todo-pause-btn ${waitForUser ? 'active' : ''}" onclick="toggleWaitForUser('${t.id}')" title="${waitForUser ? 'Pause activée — attend le user après cette tâche' : 'Cliquer pour pauser après cette tâche'}">⏸</button>
+    <button class="todo-send-btn" onclick="sendTodoToLog('${t.id}')">→ envoyer</button>
+    <button class="todo-del-btn" onclick="deleteTodo('${t.id}')">×</button>
+  </div>`;
+}
+
+// ── Drag & drop todos ──────────────────────────────────────────────────────
+let _dragTodoId = null;
+
+function onTodoDragStart(e, todoId) {
+  _dragTodoId = todoId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.target.classList.add('dragging');
+}
+
+function onTodoDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+}
+
+function onTodoDragEnter(e) {
+  const item = e.target.closest('.todo-item');
+  if (item) item.classList.add('drag-over');
+}
+
+function onTodoDragLeave(e) {
+  const item = e.target.closest('.todo-item');
+  if (item) item.classList.remove('drag-over');
+}
+
+async function onTodoDrop(e, targetId) {
+  e.preventDefault();
+  const item = e.target.closest('.todo-item');
+  if (item) item.classList.remove('drag-over');
+
+  if (!_dragTodoId || _dragTodoId === targetId) return;
+
+  const todos = state.todos[state.activeProject];
+  if (!todos) return;
+
+  const fromIdx = todos.findIndex(t => t.id === _dragTodoId);
+  const toIdx = todos.findIndex(t => t.id === targetId);
+  if (fromIdx === -1 || toIdx === -1) return;
+
+  const [moved] = todos.splice(fromIdx, 1);
+  todos.splice(toIdx, 0, moved);
+  _dragTodoId = null;
+
+  renderTodoList();
+
+  // Persist new order to server
+  await authFetch(`/api/todos/${state.activeProject}/reorder`, {
+    method: 'POST',
+    body: JSON.stringify({ order: todos.map(t => t.id) })
+  });
+}
+
+function renderPromptArea(projectId, status) {
+  const isProcessing = status === 'running';
+  return `<div class="prompt-area">
+    ${isProcessing ? '<div class="thinking-indicator"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span> Claude réfléchit...</div>' : ''}
+    <textarea class="prompt-input" id="promptInput"
+              placeholder="Envoyer un prompt à Claude... (Enter pour envoyer, Shift+Enter pour nouvelle ligne)"
+              onkeydown="handlePromptKey(event, '${projectId}')"
+              rows="1"
+              ${isProcessing ? 'disabled' : ''}
+              oninput="autoResize(this)"></textarea>
+    <button class="btn-send" onclick="sendPrompt('${projectId}')" ${isProcessing ? 'disabled' : ''}>
+      envoyer
+    </button>
+  </div>`;
+}
+
+// ── Tab switch ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  state.activeTab = tab;
+  renderProjectView();
+}
+
+// ── Logs ───────────────────────────────────────────────────────────────────
+function appendLog(projectId, text, type) {
+  const container = document.getElementById('logContainer');
+  console.log('[appendLog]', { projectId, type, hasContainer: !!container, activeProject: state.activeProject, activeTab: state.activeTab });
+  if (!container) return;
+  const empty = document.getElementById('logEmpty');
+  if (empty) empty.remove();
+  const div = document.createElement('div');
+  div.className = 'log-line';
+  div.innerHTML = `
+    <span class="log-ts">${formatTime(Date.now())}</span>
+    <span class="log-text ${type}">${type === 'assistant' ? renderMd(text) : escapeHtml(text)}</span>
+  `;
+  container.appendChild(div);
+  scrollLogsToBottom();
+}
+
+function scrollLogsToBottom() {
+  setTimeout(() => {
+    const c = document.getElementById('logContainer');
+    if (c) c.scrollTop = c.scrollHeight;
+  }, 50);
+}
+
+// ── Project controls ───────────────────────────────────────────────────────
+async function startProject(projectId) {
+  await authFetch(`/api/start/${projectId}`, { method: 'POST' });
+  state.statuses[projectId] = 'idle';
+  renderProjectView();
+  updateSidebarItem(projectId);
+}
+
+async function stopProject(projectId) {
+  const btn = document.querySelector('.btn-stop');
+  if (btn && !btn._confirming) {
+    btn._confirming = true;
+    const orig = btn.innerHTML;
+    btn.innerHTML = 'Confirmer ?';
+    setTimeout(() => { btn._confirming = false; btn.innerHTML = orig; }, 2000);
+    return;
+  }
+  await authFetch(`/api/stop/${projectId}`, { method: 'POST' });
+  state.statuses[projectId] = 'idle';
+  renderProjectView();
+  updateSidebarItem(projectId);
+}
+
+// ── Prompt ────────────────────────────────────────────────────────────────
+function handlePromptKey(e, projectId) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendPrompt(projectId);
+  }
+}
+
+async function sendPrompt(projectId) {
+  const input = document.getElementById('promptInput');
+  const btn = document.querySelector('.btn-send');
+  if (!input || !input.value.trim()) return;
+  const prompt = input.value.trim();
+  input.value = '';
+  input.style.height = 'auto';
+
+  // Loading state
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  if (input) input.disabled = true;
+
+  try {
+    await authFetch(`/api/send/${projectId}`, {
+      method: 'POST',
+      body: JSON.stringify({ prompt })
+    });
+  } catch (e) {
+    // Restore on error
+    if (btn) { btn.disabled = false; btn.textContent = 'envoyer'; }
+    if (input) { input.disabled = false; input.value = prompt; }
+  }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+// ── Todos ─────────────────────────────────────────────────────────────────
+async function addTodo() {
+  const input = document.getElementById('todoInput');
+  if (!input || !input.value.trim()) return;
+  const text = input.value.trim();
+  input.value = '';
+  const res = await authFetch(`/api/todos/${state.activeProject}`, {
+    method: 'POST',
+    body: JSON.stringify({ text })
+  });
+  const { todo } = await res.json();
+  if (!state.todos[state.activeProject]) state.todos[state.activeProject] = [];
+  state.todos[state.activeProject].push(todo);
+  renderTodoList();
+}
+
+async function toggleWaitForUser(todoId) {
+  const todos = state.todos[state.activeProject] || [];
+  const todo = todos.find(t => t.id === todoId);
+  if (!todo) return;
+  todo.waitForUser = !todo.waitForUser;
+  await authFetch(`/api/todos/${state.activeProject}/${todoId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ waitForUser: todo.waitForUser })
+  });
+  renderTodoList();
+}
+
+async function toggleTodo(todoId) {
+  const todos = state.todos[state.activeProject] || [];
+  const todo = todos.find(t => t.id === todoId);
+  if (!todo) return;
+  todo.done = !todo.done;
+  await authFetch(`/api/todos/${state.activeProject}/${todoId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ done: todo.done })
+  });
+  renderTodoList();
+}
+
+async function deleteTodo(todoId) {
+  const btn = document.querySelector(`#todo-${todoId} .todo-del-btn`);
+  if (btn && !btn._confirming) {
+    btn._confirming = true;
+    btn.textContent = '?';
+    btn.style.color = 'var(--red)';
+    btn.style.opacity = '1';
+    setTimeout(() => { btn._confirming = false; btn.textContent = '×'; btn.style.color = ''; btn.style.opacity = ''; }, 2000);
+    return;
+  }
+  await authFetch(`/api/todos/${state.activeProject}/${todoId}`, { method: 'DELETE' });
+  state.todos[state.activeProject] = (state.todos[state.activeProject] || []).filter(t => t.id !== todoId);
+  renderTodoList();
+}
+
+async function sendTodoToLog(todoId) {
+  const todos = state.todos[state.activeProject] || [];
+  const todo = todos.find(t => t.id === todoId);
+  if (!todo) return;
+  if (state.statuses[state.activeProject] === 'running') {
+    showToast('Claude est déjà en train de travailler', 'info');
+    return;
+  }
+  await authFetch(`/api/send/${state.activeProject}`, {
+    method: 'POST',
+    body: JSON.stringify({ prompt: todo.text })
+  });
+  todo.done = true;
+  await authFetch(`/api/todos/${state.activeProject}/${todoId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ done: true })
+  });
+  renderTodoList();
+  switchTab('logs');
+}
+
+// Run all pending todos sequentially with user control
+state._todoQueue = null; // { todos, currentIndex, projectId, paused }
+
+async function runAllTodos() {
+  const projectId = state.activeProject;
+  const todos = (state.todos[projectId] || []).filter(t => !t.done);
+  if (todos.length === 0) return;
+
+  state._todoQueue = { todos: [...todos], currentIndex: 0, projectId, paused: false };
+  switchTab('logs');
+  runNextTodo();
+}
+
+async function runNextTodo() {
+  const q = state._todoQueue;
+  if (!q || q.currentIndex >= q.todos.length) {
+    // All done
+    if (q) state._todoQueue = null;
+    updateTodoQueueUI();
+    return;
+  }
+
+  const todo = q.todos[q.currentIndex];
+
+  // Wait if claude is still processing
+  while (state.statuses[q.projectId] === 'running') {
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  if (!state._todoQueue) return;
+
+  // Send the todo as prompt
+  await authFetch(`/api/send/${q.projectId}`, {
+    method: 'POST',
+    body: JSON.stringify({ prompt: todo.text })
+  });
+
+  // Mark as done
+  todo.done = true;
+  const stateTodo = (state.todos[q.projectId] || []).find(t => t.id === todo.id);
+  if (stateTodo) stateTodo.done = true;
+  await authFetch(`/api/todos/${q.projectId}/${todo.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ done: true })
+  });
+  renderTodoList();
+
+  // Wait for claude to finish
+  await new Promise(resolve => {
+    const check = () => {
+      if (state.statuses[q.projectId] !== 'running') return resolve();
+      setTimeout(check, 500);
+    };
+    setTimeout(check, 1000);
+  });
+
+  if (!state._todoQueue) return;
+
+  const justFinished = todo;
+  q.currentIndex++;
+
+  // Check if the finished task had waitForUser, or if there are no more tasks
+  if (justFinished.waitForUser || q.currentIndex >= q.todos.length) {
+    q.paused = true;
+    updateTodoQueueUI();
+  } else {
+    // Auto-continue to next task
+    updateTodoQueueUI();
+    runNextTodo();
+  }
+}
+
+function continueTodoQueue() {
+  const q = state._todoQueue;
+  if (!q) return;
+  q.paused = false;
+  updateTodoQueueUI();
+  runNextTodo();
+}
+
+function stopTodoQueue() {
+  state._todoQueue = null;
+  updateTodoQueueUI();
+}
+
+// Send a follow-up message then continue the queue
+async function respondAndContinue() {
+  const input = document.getElementById('queueResponseInput');
+  if (!input || !input.value.trim()) return;
+  const q = state._todoQueue;
+  if (!q) return;
+  const prompt = input.value.trim();
+  input.value = '';
+
+  await authFetch(`/api/send/${q.projectId}`, {
+    method: 'POST',
+    body: JSON.stringify({ prompt })
+  });
+
+  // Wait for claude to finish the follow-up
+  await new Promise(resolve => {
+    const check = () => {
+      if (state.statuses[q.projectId] !== 'running') return resolve();
+      setTimeout(check, 500);
+    };
+    setTimeout(check, 1000);
+  });
+
+  if (!state._todoQueue) return;
+
+  // Still paused, user decides when to continue
+  updateTodoQueueUI();
+}
+
+function updateTodoQueueUI() {
+  const existing = document.getElementById('todoQueueBar');
+  if (existing) existing.remove();
+
+  const q = state._todoQueue;
+  if (!q) return;
+
+  const remaining = q.todos.length - q.currentIndex;
+  const done = q.currentIndex;
+  const total = q.todos.length;
+
+  if (q.paused && remaining > 0) {
+    const bar = document.createElement('div');
+    bar.id = 'todoQueueBar';
+    bar.className = 'todo-queue-bar';
+    bar.innerHTML = `
+      <div class="todo-queue-info">
+        <span class="todo-queue-progress">${done}/${total} tâches</span>
+        <span class="todo-queue-next">Prochaine : ${escapeHtml(q.todos[q.currentIndex]?.text || '').substring(0, 60)}</span>
+      </div>
+      <div class="todo-queue-actions">
+        <input class="todo-queue-input" id="queueResponseInput" placeholder="Répondre à Claude avant de continuer..."
+               onkeydown="if(event.key==='Enter')respondAndContinue()">
+        <button class="btn-queue-continue" onclick="continueTodoQueue()">▶ Continuer</button>
+        <button class="btn-queue-stop" onclick="stopTodoQueue()">■ Arrêter</button>
+      </div>
+    `;
+    const promptArea = document.querySelector('.prompt-area');
+    if (promptArea) promptArea.parentNode.insertBefore(bar, promptArea);
+  } else if (remaining === 0) {
+    // Queue finished
+    state._todoQueue = null;
+  }
+}
+
+function renderTodoList() {
+  const todos = state.todos[state.activeProject] || [];
+  const pending = todos.filter(t => !t.done).length;
+
+  // Update tab count
+  const tabCount = document.querySelector('.tab:nth-child(2) .tab-count');
+  if (tabCount) {
+    tabCount.textContent = pending || todos.length;
+    tabCount.className = `tab-count ${pending > 0 ? 'has-items' : ''}`;
+  }
+
+  const list = document.getElementById('todoList');
+  if (!list) return;
+  list.innerHTML = todos.length === 0
+    ? `<div class="todo-empty">Aucune tâche — ajoute des todos à envoyer à Claude</div>`
+    : todos.map(t => renderTodoItem(t)).join('');
+}
+
+// ── Header update (without full re-render) ─────────────────────────────────
+function updateProjectHeader(projectId) {
+  const status = state.statuses[projectId] || 'idle';
+  const isProcessing = status === 'running';
+  const badge = document.getElementById('statusBadge');
+  const dot = document.getElementById('headerDot');
+  const actions = document.querySelector('.header-actions');
+  if (badge) { badge.textContent = status; badge.className = `status-badge ${status}`; }
+  if (dot) { dot.className = `project-status-dot ${isProcessing ? 'running' : 'idle'}`; dot.style.cssText = 'width:8px;height:8px'; }
+  if (actions) {
+    actions.innerHTML = isProcessing
+      ? `<button class="btn btn-stop" onclick="stopProject('${projectId}')">■ stop</button>`
+      : '';
+  }
+  // Update prompt area: disable input while processing, show/hide thinking indicator
+  const sendBtn = document.querySelector('.btn-send');
+  const promptInput = document.getElementById('promptInput');
+  const thinkingEl = document.querySelector('.thinking-indicator');
+  if (sendBtn) sendBtn.disabled = isProcessing;
+  if (promptInput) promptInput.disabled = isProcessing;
+  if (isProcessing && !thinkingEl) {
+    const area = document.querySelector('.prompt-area');
+    if (area) area.insertAdjacentHTML('afterbegin', '<div class="thinking-indicator"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span> Claude réfléchit...</div>');
+  } else if (!isProcessing && thinkingEl) {
+    thinkingEl.remove();
+  }
+}
+
+function updateMiniCard(projectId) {
+  // Only relevant if we ever render a grid overview — no-op for now
+}
+
+// ── Settings ───────────────────────────────────────────────────────────────
+async function openSettings() {
+  const config = await authFetch('/api/config').then(r => r.json());
+  document.getElementById('projectsDirInput').value = config.projectsDir || '';
+  renderProjectListManage(config.projects || []);
+  document.getElementById('settingsModal').classList.add('visible');
+  state._editingProjects = [...(config.projects || [])];
+}
+
+function closeSettings() {
+  document.getElementById('settingsModal').classList.remove('visible');
+}
+
+function renderProjectListManage(projects) {
+  const el = document.getElementById('projectListManage');
+  if (projects.length === 0) {
+    el.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:8px">Aucun projet configuré — lance un scan</div>`;
+    return;
+  }
+  el.innerHTML = projects.map(p => `
+    <div class="project-manage-item">
+      <div style="flex:1">
+        <div class="project-manage-name">${escapeHtml(p.name)}</div>
+        <div class="project-manage-path">${escapeHtml(p.path)}</div>
+      </div>
+      <button class="btn-remove" onclick="removeFromEditing('${p.id}')">×</button>
+    </div>
+  `).join('');
+}
+
+function removeFromEditing(id) {
+  state._editingProjects = state._editingProjects.filter(p => p.id !== id);
+  renderProjectListManage(state._editingProjects);
+  // Also update scan results selection
+  state.selectedScanItems.delete(id);
+  renderScanResults();
+}
+
+async function scanRepos() {
+  const dir = document.getElementById('projectsDirInput').value.trim();
+  if (dir) {
+    await authFetch('/api/config', {
+      method: 'POST',
+      body: JSON.stringify({ projectsDir: dir })
+    });
+  }
+  const res = await authFetch(`/api/scan`).then(r => r.json());
+  state.scanResults = res.projects || [];
+  const existing = state._editingProjects || [];
+  state.selectedScanItems = new Set(existing.map(p => p.id));
+  renderScanResults();
+}
+
+function renderScanResults() {
+  const el = document.getElementById('scanResults');
+  if (state.scanResults.length === 0) {
+    el.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:8px">Aucun repo git trouvé dans ce dossier</div>`;
+    return;
+  }
+  el.innerHTML = state.scanResults.map(r => `
+    <div class="scan-item ${state.selectedScanItems.has(r.id) ? 'selected' : ''}" 
+         onclick="toggleScanItem('${r.id}')">
+      <div class="scan-item-check"></div>
+      <div>
+        <div style="font-size:13px">${escapeHtml(r.name)}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted)">${escapeHtml(r.path)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleScanItem(id) {
+  const item = state.scanResults.find(r => r.id === id);
+  if (!item) return;
+  if (state.selectedScanItems.has(id)) {
+    state.selectedScanItems.delete(id);
+    state._editingProjects = state._editingProjects.filter(p => p.id !== id);
+  } else {
+    state.selectedScanItems.add(id);
+    if (!state._editingProjects.find(p => p.id === id)) {
+      state._editingProjects.push(item);
+    }
+  }
+  renderScanResults();
+  renderProjectListManage(state._editingProjects);
+}
+
+async function saveSettings() {
+  const dir = document.getElementById('projectsDirInput').value.trim();
+  await authFetch('/api/config', {
+    method: 'POST',
+    body: JSON.stringify({ projectsDir: dir, projects: state._editingProjects })
+  });
+  state.projects = [...state._editingProjects];
+  const statuses = await authFetch('/api/status').then(r => r.json());
+  state.statuses = statuses;
+  closeSettings();
+  renderSidebar();
+  document.getElementById('emptyState') && (document.getElementById('emptyState').style.display = 'none');
+  if (state.projects.length > 0) {
+    selectProject(state.projects[0].id);
+  }
+}
+
+// ── Utils ─────────────────────────────────────────────────────────────────
+function formatTime(ts) {
+  const d = new Date(ts);
+  return d.toTimeString().slice(0, 8);
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function showToast(message, type = 'info', duration = 4000) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('removing');
+    toast.addEventListener('animationend', () => toast.remove());
+  }, duration);
+}
+
+function renderMd(str) {
+  if (!str) return '';
+  return marked.parse(escapeHtml(str), { breaks: true });
+}
+
+// Close modal on overlay click
+document.getElementById('settingsModal').addEventListener('click', function(e) {
+  if (e.target === this) closeSettings();
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+checkAuthAndInit();
+</script>
+<div id="toastContainer"></div>
+</body>
+</html>
