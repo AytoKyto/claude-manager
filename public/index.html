@@ -544,20 +544,29 @@
   .btn-send:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .btn-stop {
-    background: var(--red);
-    border: none;
-    color: #fff;
-    padding: 8px 16px;
+    background: none;
+    border: 1px solid var(--red);
+    color: var(--red);
+    padding: 0;
+    width: 38px;
     border-radius: 8px;
-    font-size: 12px;
-    font-family: var(--sans);
+    font-size: 14px;
     cursor: pointer;
-    font-weight: 500;
     transition: all 0.15s;
     height: 38px;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
-  .btn-stop:hover { background: #dc2626; }
+  .btn-stop:hover { background: rgba(239,68,68,0.15); }
+
+  .queued-indicator {
+    font-size: 11px;
+    color: var(--accent);
+    padding: 4px 12px;
+    font-family: var(--sans);
+  }
 
   .thinking-timer {
     color: var(--muted);
@@ -1473,6 +1482,18 @@ function connectWS() {
         state._statusWaiters[msg.projectId].forEach(fn => fn());
         delete state._statusWaiters[msg.projectId];
       }
+      // Send queued prompt if Claude just became idle
+      if (msg.status === 'idle' && state._queuedPrompt && state._queuedPrompt.projectId === msg.projectId) {
+        const queued = state._queuedPrompt;
+        state._queuedPrompt = null;
+        // Small delay to let UI update first
+        setTimeout(() => {
+          authFetch(`/api/send/${queued.projectId}`, {
+            method: 'POST',
+            body: JSON.stringify({ prompt: queued.prompt })
+          });
+        }, 300);
+      }
     }
   };
 }
@@ -1765,21 +1786,22 @@ async function onTodoDrop(e, targetId) {
 
 function renderPromptArea(projectId, status) {
   const isProcessing = status === 'running';
+  const hasQueued = state._queuedPrompt && state._queuedPrompt.projectId === projectId;
   if (isProcessing) {
     startThinkingTimer();
   }
   return `<div class="prompt-area">
     ${isProcessing ? `<div class="thinking-indicator"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span> Claude réfléchit... <span class="thinking-timer" id="thinkingTimer"></span></div>` : ''}
+    ${hasQueued ? `<div class="queued-indicator">⏳ Prompt en attente — sera envoyé dès que Claude a fini</div>` : ''}
     <textarea class="prompt-input" id="promptInput"
-              placeholder="Envoyer un prompt à Claude... (Enter pour envoyer, Shift+Enter pour nouvelle ligne)"
+              placeholder="${isProcessing ? 'Écrire le prochain prompt (sera envoyé après)...' : 'Envoyer un prompt à Claude... (Enter pour envoyer, Shift+Enter pour nouvelle ligne)'}"
               onkeydown="handlePromptKey(event, '${projectId}')"
               rows="1"
-              ${isProcessing ? 'disabled' : ''}
               oninput="autoResize(this)"></textarea>
-    ${isProcessing
-      ? `<button class="btn-stop" onclick="stopProject('${projectId}')">■ stop</button>`
-      : `<button class="btn-send" onclick="sendPrompt('${projectId}')">envoyer</button>`
-    }
+    <div style="display:flex;gap:6px;align-items:center">
+      <button class="btn-send" onclick="sendPrompt('${projectId}')">envoyer</button>
+      ${isProcessing ? `<button class="btn-stop" onclick="stopProject('${projectId}')" title="Arrêter Claude">■</button>` : ''}
+    </div>
   </div>`;
 }
 
@@ -1870,6 +1892,8 @@ function stopThinkingTimer() {
   _thinkingStart = null;
 }
 
+state._queuedPrompt = null; // { projectId, prompt }
+
 async function sendPrompt(projectId) {
   const input = document.getElementById('promptInput');
   const btn = document.querySelector('.btn-send');
@@ -1878,9 +1902,15 @@ async function sendPrompt(projectId) {
   input.value = '';
   input.style.height = 'auto';
 
+  // If Claude is busy, queue the prompt for later
+  if (state.statuses[projectId] === 'running') {
+    state._queuedPrompt = { projectId, prompt };
+    renderPromptAreaInPlace(projectId);
+    return;
+  }
+
   // Loading state
   if (btn) { btn.disabled = true; btn.textContent = '...'; }
-  if (input) input.disabled = true;
 
   try {
     await authFetch(`/api/send/${projectId}`, {
@@ -1890,7 +1920,15 @@ async function sendPrompt(projectId) {
   } catch (e) {
     // Restore on error
     if (btn) { btn.disabled = false; btn.textContent = 'envoyer'; }
-    if (input) { input.disabled = false; input.value = prompt; }
+    if (input) input.value = prompt;
+  }
+}
+
+function renderPromptAreaInPlace(projectId) {
+  const status = state.statuses[projectId] || 'idle';
+  const promptArea = document.querySelector('.prompt-area');
+  if (promptArea) {
+    promptArea.outerHTML = renderPromptArea(projectId, status);
   }
 }
 
