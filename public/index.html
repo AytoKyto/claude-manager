@@ -543,6 +543,29 @@
   .btn-send:hover { background: var(--accent2); }
   .btn-send:disabled { opacity: 0.4; cursor: not-allowed; }
 
+  .btn-stop {
+    background: var(--red);
+    border: none;
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: var(--sans);
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.15s;
+    height: 38px;
+    flex-shrink: 0;
+  }
+  .btn-stop:hover { background: #dc2626; }
+
+  .thinking-timer {
+    color: var(--muted);
+    font-size: 11px;
+    font-family: var(--mono);
+    margin-left: auto;
+  }
+
   /* TODOS */
   .todos-container {
     flex: 1;
@@ -1742,17 +1765,21 @@ async function onTodoDrop(e, targetId) {
 
 function renderPromptArea(projectId, status) {
   const isProcessing = status === 'running';
+  if (isProcessing) {
+    startThinkingTimer();
+  }
   return `<div class="prompt-area">
-    ${isProcessing ? '<div class="thinking-indicator"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span> Claude réfléchit...</div>' : ''}
+    ${isProcessing ? `<div class="thinking-indicator"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span> Claude réfléchit... <span class="thinking-timer" id="thinkingTimer"></span></div>` : ''}
     <textarea class="prompt-input" id="promptInput"
               placeholder="Envoyer un prompt à Claude... (Enter pour envoyer, Shift+Enter pour nouvelle ligne)"
               onkeydown="handlePromptKey(event, '${projectId}')"
               rows="1"
               ${isProcessing ? 'disabled' : ''}
               oninput="autoResize(this)"></textarea>
-    <button class="btn-send" onclick="sendPrompt('${projectId}')" ${isProcessing ? 'disabled' : ''}>
-      envoyer
-    </button>
+    ${isProcessing
+      ? `<button class="btn-stop" onclick="stopProject('${projectId}')">■ stop</button>`
+      : `<button class="btn-send" onclick="sendPrompt('${projectId}')">envoyer</button>`
+    }
   </div>`;
 }
 
@@ -1815,6 +1842,32 @@ function handlePromptKey(e, projectId) {
     e.preventDefault();
     sendPrompt(projectId);
   }
+}
+
+// ── Stop & Thinking timer ──────────────────────────────────────────────────
+async function stopProject(projectId) {
+  await authFetch(`/api/stop/${projectId}`, { method: 'POST' });
+}
+
+let _thinkingStart = null;
+let _thinkingInterval = null;
+
+function startThinkingTimer() {
+  if (_thinkingInterval) return; // Already running
+  _thinkingStart = Date.now();
+  _thinkingInterval = setInterval(() => {
+    const el = document.getElementById('thinkingTimer');
+    if (!el) { stopThinkingTimer(); return; }
+    const elapsed = Math.floor((Date.now() - _thinkingStart) / 1000);
+    const min = Math.floor(elapsed / 60);
+    const sec = elapsed % 60;
+    el.textContent = min > 0 ? `${min}m${sec.toString().padStart(2,'0')}s` : `${sec}s`;
+  }, 1000);
+}
+
+function stopThinkingTimer() {
+  if (_thinkingInterval) { clearInterval(_thinkingInterval); _thinkingInterval = null; }
+  _thinkingStart = null;
 }
 
 async function sendPrompt(projectId) {
@@ -2199,18 +2252,14 @@ function updateProjectHeader(projectId) {
       ? `<button class="btn btn-stop" onclick="stopProject('${projectId}')">■ stop</button>`
       : '';
   }
-  // Update prompt area: disable input while processing, show/hide thinking indicator
-  const sendBtn = document.querySelector('.btn-send');
-  const promptInput = document.getElementById('promptInput');
-  const thinkingEl = document.querySelector('.thinking-indicator');
-  if (sendBtn) sendBtn.disabled = isProcessing;
-  if (promptInput) promptInput.disabled = isProcessing;
-  if (isProcessing && !thinkingEl) {
-    const area = document.querySelector('.prompt-area');
-    if (area) area.insertAdjacentHTML('afterbegin', '<div class="thinking-indicator"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span> Claude réfléchit...</div>');
-  } else if (!isProcessing && thinkingEl) {
-    thinkingEl.remove();
+  // Re-render prompt area to swap send/stop buttons
+  if (state.activeTab === 'logs') {
+    const promptArea = document.querySelector('.prompt-area');
+    if (promptArea) {
+      promptArea.outerHTML = renderPromptArea(projectId, status);
+    }
   }
+  if (!isProcessing) stopThinkingTimer();
 }
 
 function updateMiniCard(projectId) {
