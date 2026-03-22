@@ -121,16 +121,8 @@ else
     echo ""
   fi
 
-  cat > "$INSTALL_DIR/.env" <<EOF
-PORT=$CUSTOM_PORT
-HOST=0.0.0.0
-AUTH_SECRET=$AUTH_PW
-ANTHROPIC_API_KEY=$API_KEY
-
-# SSL (laisser vide si derrière un reverse proxy comme nginx/caddy)
-SSL_CERT=
-SSL_KEY=
-EOF
+  printf "PORT=%s\nHOST=0.0.0.0\nAUTH_SECRET=%s\nANTHROPIC_API_KEY=%s\n\n# SSL (laisser vide si derrière un reverse proxy comme nginx/caddy)\nSSL_CERT=\nSSL_KEY=\n" \
+    "$CUSTOM_PORT" "$AUTH_PW" "$API_KEY" > "$INSTALL_DIR/.env"
 
   # Créer le dossier projets s'il n'existe pas
   mkdir -p "$PROJECTS_DIR"
@@ -166,24 +158,9 @@ if [[ "$(uname)" == "Linux" ]] && command -v systemctl &>/dev/null; then
     SVC_PORT=$(grep '^PORT=' "$INSTALL_DIR/.env" | cut -d= -f2)
     SVC_PORT=${SVC_PORT:-3131}
 
-    sudo tee "$SERVICE_FILE" > /dev/null <<EOF
-[Unit]
-Description=Claude Manager
-After=network.target
-
-[Service]
-Type=simple
-User=$USER
-WorkingDirectory=$INSTALL_DIR
-ExecStart=$(which node) server.js
-Restart=on-failure
-RestartSec=5
-EnvironmentFile=$INSTALL_DIR/.env
-Environment=NODE_ENV=production
-
-[Install]
-WantedBy=multi-user.target
-EOF
+    NODE_PATH=$(which node)
+    printf "[Unit]\nDescription=Claude Manager\nAfter=network.target\n\n[Service]\nType=simple\nUser=%s\nWorkingDirectory=%s\nExecStart=%s server.js\nRestart=on-failure\nRestartSec=5\nEnvironmentFile=%s/.env\nEnvironment=NODE_ENV=production\n\n[Install]\nWantedBy=multi-user.target\n" \
+      "$USER" "$INSTALL_DIR" "$NODE_PATH" "$INSTALL_DIR" | sudo tee "$SERVICE_FILE" > /dev/null
 
     sudo systemctl daemon-reload
     sudo systemctl enable "$SERVICE_NAME"
