@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const { WebSocketServer } = require('ws');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -532,6 +532,36 @@ app.delete('/api/todos/:projectId/:todoId', (req, res) => {
   project.todos = (project.todos || []).filter(t => t.id !== req.params.todoId);
   saveConfig(config);
   res.json({ ok: true });
+});
+
+// ── Version & Update ────────────────────────────────────────────────────────
+const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+
+app.get('/api/version', (req, res) => {
+  try {
+    const localHash = execSync('git rev-parse HEAD', { cwd: __dirname }).toString().trim();
+    let updateAvailable = false;
+    try {
+      execSync('git fetch --quiet', { cwd: __dirname, timeout: 10000 });
+      const remoteHash = execSync('git rev-parse origin/main', { cwd: __dirname }).toString().trim();
+      updateAvailable = localHash !== remoteHash;
+    } catch (e) {
+      // Fetch failed (no network, no remote, etc.) — ignore
+    }
+    res.json({ version: pkg.version, hash: localHash.substring(0, 7), updateAvailable });
+  } catch (e) {
+    res.json({ version: pkg.version, hash: null, updateAvailable: false });
+  }
+});
+
+app.post('/api/update', (req, res) => {
+  try {
+    const output = execSync('git pull --ff-only 2>&1', { cwd: __dirname, timeout: 30000 }).toString();
+    const newPkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+    res.json({ ok: true, output, version: newPkg.version, needRestart: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── WebSocket with auth ─────────────────────────────────────────────────────
