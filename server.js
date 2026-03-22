@@ -47,9 +47,8 @@ app.use(helmet({
 
 app.use(cors({
   origin: (origin, cb) => {
-    // Allow same-origin requests (origin is undefined) and requests from the server itself
     if (!origin) return cb(null, true);
-    cb(null, true); // In production behind a reverse proxy, tighten this
+    cb(null, true);
   }
 }));
 
@@ -57,8 +56,7 @@ app.use(express.json());
 
 // ── Authentication middleware ───────────────────────────────────────────────
 function checkAuth(req, res, next) {
-  if (!AUTH_SECRET) return next(); // No auth configured
-
+  if (!AUTH_SECRET) return next();
   const token = req.headers['x-auth-token'] || req.query.token;
   if (token && crypto.timingSafeEqual(
     Buffer.from(token),
@@ -69,10 +67,8 @@ function checkAuth(req, res, next) {
   res.status(401).json({ error: 'Unauthorized' });
 }
 
-// Serve static files (login page must be accessible without auth)
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Auth check endpoint (no auth required — used by frontend to test token)
 app.post('/api/auth', (req, res) => {
   if (!AUTH_SECRET) return res.json({ ok: true, authRequired: false });
   const token = req.body.token || '';
@@ -85,19 +81,16 @@ app.post('/api/auth', (req, res) => {
   res.status(401).json({ error: 'Invalid password' });
 });
 
-// Health check (no auth required)
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime() });
 });
 
-// Rate limit on /api/send to prevent prompt spam
 const sendLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
   message: { error: 'Too many requests, slow down' }
 });
 
-// ── Protect all other API routes ────────────────────────────────────────────
 app.use('/api', checkAuth);
 
 // Config file for persisting projects & todos
@@ -132,8 +125,17 @@ function saveConfig(config) {
   _configMtime = fs.statSync(CONFIG_FILE).mtimeMs;
 }
 
-// Active claude processes per project
-const processes = {}; // projectId -> { proc, logs, status }
+// ── Process management ──────────────────────────────────────────────────────
+// Key: "projectId:chatId" -> { proc, logs, status, sessionId, chatId }
+const processes = {};
+
+function procKey(projectId, chatId) {
+  return `${projectId}:${chatId}`;
+}
+
+function getProc(projectId, chatId) {
+  return processes[procKey(projectId, chatId)] || null;
+}
 
 function broadcast(data) {
   const msg = JSON.stringify(data);
@@ -142,8 +144,8 @@ function broadcast(data) {
   });
 }
 
-function getProjectStatus(projectId) {
-  const p = processes[projectId];
+function getChatStatus(projectId, chatId) {
+  const p = getProc(projectId, chatId);
   if (!p) return 'idle';
   return p.status;
 }
@@ -195,31 +197,86 @@ app.post('/api/config', (req, res) => {
   res.json({ ok: true });
 });
 
-// Start claude in a project
-// Helper: spawn claude with stream-json output
-function spawnClaude(projectId, project, prompt) {
+// ── Chats CRUD ──────────────────────────────────────────────────────────────
+app.get('/api/chats/:projectId', (req, res) => {
+  const config = loadConfig();
+  const project = config.projects.find(p => p.id === req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'Not found' });
+  const chats = (project.chats || []).map(c => ({
+    ...c,
+    status: getChatStatus(req.params.projectId, c.id)
+  }));
+  res.json({ chats });
+});
+
+app.post('/api/chats/:projectId', (req, res) => {
+  const config = loadConfig();
+  const project = config.projects.find(p => p.id === req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'Not found' });
+  if (!project.chats) project.chats = [];
+  const chat = {
+    id: Date.now().toString(),
+    name: req.body.name || `Chat ${project.chats.length + 1}`,
+    createdAt: new Date().toISOString()
+  };
+  project.chats.push(chat);
+  saveConfig(config);
+  res.json({ chat: { ...chat, status: 'idle' } });
+});
+
+app.delete('/api/chats/:projectId/:chatId', (req, res) => {
+  const { projectId, chatId } = req.params;
+  const config = loadConfig();
+  const project = config.projects.find(p => p.id === projectId);
+  if (!project) return res.status(404).json({ error: 'Not found' });
+  // Kill process if running
+  const key = procKey(projectId, chatId);
+  if (processes[key] && processes[key].proc) {
+    processes[key].proc.kill();
+  }
+  delete processes[key];
+  project.chats = (project.chats || []).filter(c => c.id !== chatId);
+  saveConfig(config);
+  res.json({ ok: true });
+});
+
+app.patch('/api/chats/:projectId/:chatId', (req, res) => {
+  const config = loadConfig();
+  const project = config.projects.find(p => p.id === req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'Not found' });
+  const chat = (project.chats || []).find(c => c.id === req.params.chatId);
+  if (!chat) return res.status(404).json({ error: 'Chat not found' });
+  if (req.body.name !== undefined) chat.name = req.body.name;
+  saveConfig(config);
+  res.json({ chat });
+});
+
+// ── Claude process spawn ────────────────────────────────────────────────────
+function spawnClaude(projectId, chatId, project, prompt) {
+  const key = procKey(projectId, chatId);
+
   // Load sessionId from config if not in memory
-  if (!processes[projectId]?.sessionId) {
+  if (!processes[key]?.sessionId) {
     try {
       const cfg = loadConfig();
       const proj = cfg.projects.find(p => p.id === projectId);
-      if (proj?.lastSessionId) {
-        if (!processes[projectId]) {
-          processes[projectId] = { proc: null, logs: [], status: 'idle', sessionId: proj.lastSessionId, startedAt: new Date().toISOString() };
+      const chat = (proj?.chats || []).find(c => c.id === chatId);
+      if (chat?.lastSessionId) {
+        if (!processes[key]) {
+          processes[key] = { proc: null, logs: [], status: 'idle', sessionId: chat.lastSessionId, chatId, startedAt: new Date().toISOString() };
         } else {
-          processes[projectId].sessionId = proj.lastSessionId;
+          processes[key].sessionId = chat.lastSessionId;
         }
       }
     } catch (e) {
-      console.error(`[${projectId}] Failed to load sessionId from config:`, e.message);
+      console.error(`[${key}] Failed to load sessionId from config:`, e.message);
     }
   }
 
   const args = ['--print', '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
 
-  // Use --resume with session_id to continue the conversation
-  if (processes[projectId] && processes[projectId].sessionId) {
-    args.push('--resume', processes[projectId].sessionId);
+  if (processes[key] && processes[key].sessionId) {
+    args.push('--resume', processes[key].sessionId);
   }
 
   const proc = spawn('claude', args, {
@@ -228,106 +285,102 @@ function spawnClaude(projectId, project, prompt) {
     stdio: ['pipe', 'pipe', 'pipe']
   });
 
-  // Send prompt via stdin and close it immediately
   proc.stdin.write(prompt);
   proc.stdin.end();
 
   proc.on('error', (err) => {
-    console.error(`[${projectId}] Spawn error:`, err.message);
-    if (processes[projectId]) {
-      processes[projectId].status = 'idle';
+    console.error(`[${key}] Spawn error:`, err.message);
+    if (processes[key]) {
+      processes[key].status = 'idle';
       const entry = { logType: 'stderr', text: `Erreur: ${err.message}`, ts: Date.now() };
-      processes[projectId].logs.push(entry);
-      broadcast({ type: 'log', projectId, ...entry });
+      processes[key].logs.push(entry);
+      broadcast({ type: 'log', projectId, chatId, ...entry });
     }
-    broadcast({ type: 'status', projectId, status: 'idle' });
+    broadcast({ type: 'status', projectId, chatId, status: 'idle' });
   });
 
-  console.log(`[${projectId}] Spawned claude in ${project.path}`);
+  console.log(`[${key}] Spawned claude in ${project.path}`);
 
-  if (!processes[projectId]) {
-    processes[projectId] = { proc, logs: [], status: 'running', sessionId: null, startedAt: new Date().toISOString() };
+  if (!processes[key]) {
+    processes[key] = { proc, logs: [], status: 'running', sessionId: null, chatId, startedAt: new Date().toISOString() };
   } else {
-    processes[projectId].proc = proc;
-    processes[projectId].status = 'running';
+    processes[key].proc = proc;
+    processes[key].status = 'running';
   }
 
   let buffer = '';
   proc.stdout.on('data', (data) => {
     buffer += data.toString();
-    // Parse complete JSON lines
     const lines = buffer.split('\n');
-    buffer = lines.pop(); // keep incomplete line in buffer
+    buffer = lines.pop();
     for (const line of lines) {
       if (!line.trim()) continue;
       try {
         const event = JSON.parse(line);
-        const parsed = parseClaudeEvent(projectId, event);
+        const parsed = parseClaudeEvent(projectId, chatId, event);
         if (parsed) {
-          processes[projectId].logs.push(parsed);
-          if (processes[projectId].logs.length > 500) processes[projectId].logs.shift();
-          broadcast({ type: 'log', projectId, ...parsed });
+          processes[key].logs.push(parsed);
+          if (processes[key].logs.length > 500) processes[key].logs.shift();
+          broadcast({ type: 'log', projectId, chatId, ...parsed });
         }
       } catch (e) {
-        console.log(`[${projectId}] JSON parse error:`, line.substring(0, 100));
+        console.log(`[${key}] JSON parse error:`, line.substring(0, 100));
       }
     }
   });
 
   proc.stderr.on('data', (data) => {
     const text = data.toString();
-    console.log(`[${projectId}] STDERR:`, text.substring(0, 200));
+    console.log(`[${key}] STDERR:`, text.substring(0, 200));
     const entry = { logType: 'stderr', text, ts: Date.now() };
-    processes[projectId].logs.push(entry);
-    broadcast({ type: 'log', projectId, ...entry });
+    processes[key].logs.push(entry);
+    broadcast({ type: 'log', projectId, chatId, ...entry });
   });
 
   proc.on('exit', (code) => {
-    console.log(`[${projectId}] EXIT code=${code}`);
-    // Flush any remaining buffer
+    console.log(`[${key}] EXIT code=${code}`);
     if (buffer && buffer.trim()) {
       try {
         const event = JSON.parse(buffer);
-        const parsed = parseClaudeEvent(projectId, event);
+        const parsed = parseClaudeEvent(projectId, chatId, event);
         if (parsed) {
-          processes[projectId].logs.push(parsed);
-          if (processes[projectId].logs.length > 500) processes[projectId].logs.shift();
-          broadcast({ type: 'log', projectId, ...parsed });
+          processes[key].logs.push(parsed);
+          if (processes[key].logs.length > 500) processes[key].logs.shift();
+          broadcast({ type: 'log', projectId, chatId, ...parsed });
         }
       } catch (e) {
-        console.log(`[${projectId}] Final buffer parse error:`, buffer.substring(0, 100));
+        console.log(`[${key}] Final buffer parse error:`, buffer.substring(0, 100));
       }
     }
-    if (processes[projectId]) processes[projectId].status = 'idle';
-    broadcast({ type: 'status', projectId, status: 'idle', exitCode: code });
+    if (processes[key]) processes[key].status = 'idle';
+    broadcast({ type: 'status', projectId, chatId, status: 'idle', exitCode: code });
   });
 
   return proc;
 }
 
-// Parse a stream-json event into a log entry for the frontend
-function parseClaudeEvent(projectId, event) {
+function parseClaudeEvent(projectId, chatId, event) {
+  const key = procKey(projectId, chatId);
   const ts = Date.now();
 
   if (event.type === 'system' && event.subtype === 'init') {
-    const isResume = processes[projectId]?.sessionId != null;
-    // Save session_id for --resume on next prompt
-    if (event.session_id && processes[projectId]) {
-      processes[projectId].sessionId = event.session_id;
-      console.log(`[${projectId}] Session ID: ${event.session_id}`);
-      // Persist sessionId in config for recovery after restart
+    const isResume = processes[key]?.sessionId != null;
+    if (event.session_id && processes[key]) {
+      processes[key].sessionId = event.session_id;
+      console.log(`[${key}] Session ID: ${event.session_id}`);
       try {
         const cfg = loadConfig();
         const proj = cfg.projects.find(p => p.id === projectId);
-        if (proj) {
-          proj.lastSessionId = event.session_id;
+        const chat = (proj?.chats || []).find(c => c.id === chatId);
+        if (chat) {
+          chat.lastSessionId = event.session_id;
           saveConfig(cfg);
         }
       } catch (e) {
-        console.error(`[${projectId}] Failed to persist sessionId:`, e.message);
+        console.error(`[${key}] Failed to persist sessionId:`, e.message);
       }
     }
-    if (isResume) return null; // Don't show init for resumed sessions
+    if (isResume) return null;
     return { logType: 'system', text: `Session démarrée (${event.model})`, ts };
   }
 
@@ -348,16 +401,14 @@ function parseClaudeEvent(projectId, event) {
         else if (toolName === 'Grep') detail = input.pattern || '';
         else if (toolName === 'Glob') detail = input.pattern || '';
         else detail = JSON.stringify(input).substring(0, 100);
-
         parts.push({ logType: 'tool_use', text: `🔧 ${toolName}: ${detail}`, toolName, toolInput: input, ts });
       }
     }
-    // Return first part, push rest directly
     if (parts.length > 1) {
       for (let i = 1; i < parts.length; i++) {
-        processes[projectId].logs.push(parts[i]);
-        if (processes[projectId].logs.length > 500) processes[projectId].logs.shift();
-        broadcast({ type: 'log', projectId, ...parts[i] });
+        processes[key].logs.push(parts[i]);
+        if (processes[key].logs.length > 500) processes[key].logs.shift();
+        broadcast({ type: 'log', projectId, chatId, ...parts[i] });
       }
     }
     return parts[0] || null;
@@ -365,100 +416,82 @@ function parseClaudeEvent(projectId, event) {
 
   if (event.type === 'result') {
     const duration = event.duration_ms ? `${(event.duration_ms / 1000).toFixed(1)}s` : '';
-    // Set idle immediately on result — don't wait for process exit
-    if (processes[projectId]) processes[projectId].status = 'idle';
-    broadcast({ type: 'status', projectId, status: 'idle' });
+    if (processes[key]) processes[key].status = 'idle';
+    broadcast({ type: 'status', projectId, chatId, status: 'idle' });
     return { logType: 'result', text: `✓ Terminé ${duration}`, ts };
   }
 
   return null;
 }
 
-app.post('/api/start/:projectId', (req, res) => {
-  const { projectId } = req.params;
-  const config = loadConfig();
-  const project = config.projects.find(p => p.id === projectId);
-  if (!project) return res.status(404).json({ error: 'Project not found' });
-
-  if (processes[projectId] && processes[projectId].status === 'running') {
-    return res.json({ ok: true, message: 'Already running' });
-  }
-
-  // Initialize process entry without spawning — waits for first prompt
-  processes[projectId] = {
-    proc: null,
-    logs: [],
-    status: 'idle',
-    startedAt: new Date().toISOString()
-  };
-
-  res.json({ ok: true });
-});
-
-// Stop a claude process
-app.post('/api/stop/:projectId', (req, res) => {
-  const { projectId } = req.params;
-  const p = processes[projectId];
+// ── Stop a chat process ─────────────────────────────────────────────────────
+app.post('/api/stop/:projectId/:chatId', (req, res) => {
+  const { projectId, chatId } = req.params;
+  const key = procKey(projectId, chatId);
+  const p = processes[key];
   if (p && p.proc) {
     p.proc.kill();
     p.status = 'idle';
   }
-  broadcast({ type: 'status', projectId, status: 'idle' });
+  broadcast({ type: 'status', projectId, chatId, status: 'idle' });
   res.json({ ok: true });
 });
 
-// Send a prompt to running claude
-app.post('/api/send/:projectId', sendLimiter, (req, res) => {
-  const { projectId } = req.params;
+// ── Send a prompt to a chat ─────────────────────────────────────────────────
+app.post('/api/send/:projectId/:chatId', sendLimiter, (req, res) => {
+  const { projectId, chatId } = req.params;
   const { prompt } = req.body;
   const config = loadConfig();
   const project = config.projects.find(p => p.id === projectId);
   if (!project) return res.status(404).json({ error: 'Project not found' });
 
-  if (processes[projectId] && processes[projectId].status === 'running') {
+  const key = procKey(projectId, chatId);
+
+  if (processes[key] && processes[key].status === 'running') {
     return res.status(400).json({ error: 'Claude is already processing a prompt' });
   }
 
-  // Log the user prompt
-  if (!processes[projectId]) {
-    processes[projectId] = { proc: null, logs: [], status: 'idle', startedAt: new Date().toISOString() };
+  if (!processes[key]) {
+    processes[key] = { proc: null, logs: [], status: 'idle', chatId, startedAt: new Date().toISOString() };
   }
-  processes[projectId].logs.push({ type: 'prompt', text: '> ' + prompt, ts: Date.now() });
-  broadcast({ type: 'log', projectId, line: '> ' + prompt, logType: 'prompt' });
+  processes[key].logs.push({ type: 'prompt', text: '> ' + prompt, ts: Date.now() });
+  broadcast({ type: 'log', projectId, chatId, line: '> ' + prompt, logType: 'prompt' });
 
-  // Set status to running immediately to prevent race conditions
-  processes[projectId].status = 'running';
-  broadcast({ type: 'status', projectId, status: 'running' });
+  processes[key].status = 'running';
+  broadcast({ type: 'status', projectId, chatId, status: 'running' });
 
   try {
-    spawnClaude(projectId, project, prompt);
+    spawnClaude(projectId, chatId, project, prompt);
   } catch (e) {
-    console.error(`[${projectId}] Failed to spawn claude:`, e.message);
-    processes[projectId].status = 'idle';
-    broadcast({ type: 'status', projectId, status: 'idle' });
+    console.error(`[${key}] Failed to spawn claude:`, e.message);
+    processes[key].status = 'idle';
+    broadcast({ type: 'status', projectId, chatId, status: 'idle' });
     return res.status(500).json({ error: 'Failed to start Claude' });
   }
 
   res.json({ ok: true });
 });
 
-// Get logs for a project
-app.get('/api/logs/:projectId', (req, res) => {
-  const p = processes[req.params.projectId];
+// ── Get logs for a chat ─────────────────────────────────────────────────────
+app.get('/api/logs/:projectId/:chatId', (req, res) => {
+  const p = getProc(req.params.projectId, req.params.chatId);
   res.json({ logs: p ? p.logs : [] });
 });
 
-// Status of all projects
+// ── Status of all chats for all projects ────────────────────────────────────
 app.get('/api/status', (req, res) => {
   const config = loadConfig();
   const statuses = {};
   config.projects.forEach(p => {
-    statuses[p.id] = getProjectStatus(p.id);
+    statuses[p.id] = {};
+    (p.chats || []).forEach(c => {
+      statuses[p.id][c.id] = getChatStatus(p.id, c.id);
+    });
   });
   res.json(statuses);
 });
 
-// Todos CRUD
+// ── Todos CRUD (unchanged, per project) ─────────────────────────────────────
 app.get('/api/todos/:projectId', (req, res) => {
   const config = loadConfig();
   const project = config.projects.find(p => p.id === req.params.projectId);
@@ -496,7 +529,6 @@ app.post('/api/todos/:projectId/reorder', (req, res) => {
   const order = req.body.order || [];
   const todosMap = new Map((project.todos || []).map(t => [t.id, t]));
   project.todos = order.map(id => todosMap.get(id)).filter(Boolean);
-  // Append any todos not in the order list (safety)
   for (const t of todosMap.values()) {
     if (!order.includes(t.id)) project.todos.push(t);
   }
@@ -504,7 +536,6 @@ app.post('/api/todos/:projectId/reorder', (req, res) => {
   res.json({ ok: true });
 });
 
-// Bulk import todos
 app.post('/api/todos/:projectId/bulk', (req, res) => {
   const config = loadConfig();
   const project = config.projects.find(p => p.id === req.params.projectId);
@@ -549,7 +580,7 @@ app.get('/api/version', (req, res) => {
       const remoteHash = execSync('git rev-parse origin/main', { cwd: __dirname }).toString().trim();
       updateAvailable = localHash !== remoteHash;
     } catch (e) {
-      // Fetch failed (no network, no remote, etc.) — ignore
+      // Fetch failed — ignore
     }
     res.json({ version: pkg.version, hash: localHash.substring(0, 7), updateAvailable });
   } catch (e) {
@@ -569,7 +600,6 @@ app.post('/api/update', (req, res) => {
 
 // ── WebSocket with auth ─────────────────────────────────────────────────────
 wss.on('connection', (ws, req) => {
-  // Check auth for WebSocket connections
   if (AUTH_SECRET) {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const token = url.searchParams.get('token') || '';
@@ -583,9 +613,10 @@ wss.on('connection', (ws, req) => {
   }
 
   const config = loadConfig();
-  // Send current state to new client
   config.projects.forEach(p => {
-    ws.send(JSON.stringify({ type: 'status', projectId: p.id, status: getProjectStatus(p.id) }));
+    (p.chats || []).forEach(c => {
+      ws.send(JSON.stringify({ type: 'status', projectId: p.id, chatId: c.id, status: getChatStatus(p.id, c.id) }));
+    });
   });
 });
 

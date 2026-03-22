@@ -406,6 +406,72 @@
     font-family: var(--mono);
   }
 
+  /* CHAT BAR */
+  .chat-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+
+  .chat-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: var(--sans);
+    color: var(--muted);
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .chat-tab:hover { color: var(--text); background: var(--bg2); }
+  .chat-tab.active { color: var(--text); background: var(--bg2); border-color: var(--border2); }
+
+  .chat-status-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--red);
+    flex-shrink: 0;
+  }
+  .chat-status-dot.running { background: var(--green); }
+
+  .chat-tab-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+
+  .chat-tab-close {
+    font-size: 13px;
+    opacity: 0;
+    cursor: pointer;
+    color: var(--muted);
+    transition: all 0.15s;
+    line-height: 1;
+  }
+  .chat-tab:hover .chat-tab-close { opacity: 0.6; }
+  .chat-tab-close:hover { color: var(--red); opacity: 1 !important; }
+
+  .chat-add-btn {
+    background: none;
+    border: 1px dashed var(--border2);
+    color: var(--muted);
+    width: 26px; height: 26px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .chat-add-btn:hover { color: var(--accent); border-color: var(--accent); }
+
   /* TABS */
   .tabs {
     display: flex;
@@ -1351,14 +1417,30 @@ Corriger le bug #123
 // ── State ──────────────────────────────────────────────────────────────────
 let state = {
   projects: [],
-  statuses: {},
-  logs: {},
+  statuses: {},    // { projectId: { chatId: 'running'|'idle' } }
+  chats: {},       // { projectId: [{ id, name, status }] }
+  activeChat: {},  // { projectId: chatId }
+  logs: {},        // { "projectId:chatId": [{text, type, ts}] }
   todos: {},
   activeProject: null,
   activeTab: 'logs',
   scanResults: [],
   selectedScanItems: new Set()
 };
+
+function logKey(projectId, chatId) {
+  return `${projectId}:${chatId}`;
+}
+
+function getActiveChat(projectId) {
+  return state.activeChat[projectId] || null;
+}
+
+function getActiveChatStatus(projectId) {
+  const chatId = getActiveChat(projectId);
+  if (!chatId) return 'idle';
+  return (state.statuses[projectId] || {})[chatId] || 'idle';
+}
 
 // ── Auth helpers ───────────────────────────────────────────────────────────
 function getAuthToken() {
@@ -1461,34 +1543,40 @@ function connectWS() {
     const msg = JSON.parse(e.data);
     console.log('[WS]', msg.type, msg.projectId, msg.logType || msg.status || '', (msg.line || '').substring(0, 80));
 
-    if (msg.type === 'log') {
-      if (!state.logs[msg.projectId]) state.logs[msg.projectId] = [];
+    if (msg.type === 'log' && msg.chatId) {
+      const lk = logKey(msg.projectId, msg.chatId);
+      if (!state.logs[lk]) state.logs[lk] = [];
       const text = msg.text || msg.line || '';
-      state.logs[msg.projectId].push({ text, type: msg.logType, ts: Date.now() });
-      if (state.logs[msg.projectId].length > 500) state.logs[msg.projectId].shift();
-      if (state.activeProject === msg.projectId && state.activeTab === 'logs') {
+      state.logs[lk].push({ text, type: msg.logType, ts: Date.now() });
+      if (state.logs[lk].length > 500) state.logs[lk].shift();
+      if (state.activeProject === msg.projectId && getActiveChat(msg.projectId) === msg.chatId && state.activeTab === 'logs') {
         appendLog(msg.projectId, text, msg.logType);
       }
       updateMiniCard(msg.projectId);
     }
 
-    if (msg.type === 'status') {
-      state.statuses[msg.projectId] = msg.status;
+    if (msg.type === 'status' && msg.chatId) {
+      if (!state.statuses[msg.projectId]) state.statuses[msg.projectId] = {};
+      state.statuses[msg.projectId][msg.chatId] = msg.status;
       updateSidebarItem(msg.projectId);
-      if (state.activeProject === msg.projectId) updateProjectHeader(msg.projectId);
+      if (state.activeProject === msg.projectId && getActiveChat(msg.projectId) === msg.chatId) {
+        updateProjectHeader(msg.projectId);
+      }
+      // Update chat list dot
+      updateChatStatus(msg.projectId, msg.chatId, msg.status);
       updateMiniCard(msg.projectId);
       // Notify todo queue waiters
-      if (msg.status === 'idle' && state._statusWaiters[msg.projectId]) {
-        state._statusWaiters[msg.projectId].forEach(fn => fn());
-        delete state._statusWaiters[msg.projectId];
+      const waiterKey = logKey(msg.projectId, msg.chatId);
+      if (msg.status === 'idle' && state._statusWaiters[waiterKey]) {
+        state._statusWaiters[waiterKey].forEach(fn => fn());
+        delete state._statusWaiters[waiterKey];
       }
       // Send queued prompt if Claude just became idle
-      if (msg.status === 'idle' && state._queuedPrompt && state._queuedPrompt.projectId === msg.projectId) {
+      if (msg.status === 'idle' && state._queuedPrompt && state._queuedPrompt.projectId === msg.projectId && state._queuedPrompt.chatId === msg.chatId) {
         const queued = state._queuedPrompt;
         state._queuedPrompt = null;
-        // Small delay to let UI update first
         setTimeout(() => {
-          authFetch(`/api/send/${queued.projectId}`, {
+          authFetch(`/api/send/${queued.projectId}/${queued.chatId}`, {
             method: 'POST',
             body: JSON.stringify({ prompt: queued.prompt })
           });
@@ -1529,6 +1617,22 @@ async function init() {
   state.projects = config.projects || [];
   const statuses = await authFetch('/api/status').then(r => r.json());
   state.statuses = statuses;
+  // Load chats for all projects
+  await Promise.all(state.projects.map(async p => {
+    const data = await authFetch(`/api/chats/${p.id}`).then(r => r.json());
+    state.chats[p.id] = data.chats || [];
+    // Auto-create a default chat if none exist
+    if (state.chats[p.id].length === 0) {
+      const res = await authFetch(`/api/chats/${p.id}`, {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Chat 1' })
+      });
+      const { chat } = await res.json();
+      state.chats[p.id] = [chat];
+    }
+    // Set active chat to first one
+    state.activeChat[p.id] = state.chats[p.id][0].id;
+  }));
   renderSidebar();
   connectWS();
   checkVersion();
@@ -1551,7 +1655,7 @@ function renderSidebar() {
          ondragenter="onProjectDragEnter(event)"
          ondragleave="onProjectDragLeave(event)"
          ondrop="onProjectDrop(event, '${p.id}')">
-      <div class="project-status-dot ${state.statuses[p.id] === 'running' ? 'running' : 'idle'}"
+      <div class="project-status-dot ${Object.values(state.statuses[p.id] || {}).some(s => s === 'running') ? 'running' : 'idle'}"
            id="dot-${p.id}"></div>
       <div>
         <div class="project-item-name">${escapeHtml(p.name)}</div>
@@ -1612,7 +1716,9 @@ async function onProjectDrop(e, targetId) {
 function updateSidebarItem(projectId) {
   const dot = document.getElementById(`dot-${projectId}`);
   if (dot) {
-    dot.className = `project-status-dot ${state.statuses[projectId] === 'running' ? 'running' : 'idle'}`;
+    const chatStatuses = state.statuses[projectId] || {};
+    const anyRunning = Object.values(chatStatuses).some(s => s === 'running');
+    dot.className = `project-status-dot ${anyRunning ? 'running' : 'idle'}`;
   }
 }
 
@@ -1626,15 +1732,71 @@ async function selectProject(projectId) {
   const sidebarItem = document.getElementById(`sidebar-${projectId}`);
   if (sidebarItem) sidebarItem.classList.add('active');
 
-  // Load logs & todos
-  const [logsData, todosData] = await Promise.all([
-    authFetch(`/api/logs/${projectId}`).then(r => r.json()),
-    authFetch(`/api/todos/${projectId}`).then(r => r.json())
-  ]);
-  state.logs[projectId] = logsData.logs || [];
+  // Load chats if not already loaded
+  if (!state.chats[projectId]) {
+    const data = await authFetch(`/api/chats/${projectId}`).then(r => r.json());
+    state.chats[projectId] = data.chats || [];
+    if (state.chats[projectId].length === 0) {
+      const res = await authFetch(`/api/chats/${projectId}`, {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Chat 1' })
+      });
+      const { chat } = await res.json();
+      state.chats[projectId] = [chat];
+    }
+    state.activeChat[projectId] = state.chats[projectId][0].id;
+  }
+
+  const chatId = getActiveChat(projectId);
+  await loadChatLogs(projectId, chatId);
+
+  // Load todos
+  const todosData = await authFetch(`/api/todos/${projectId}`).then(r => r.json());
   state.todos[projectId] = todosData.todos || [];
 
   renderProjectView();
+}
+
+async function loadChatLogs(projectId, chatId) {
+  const lk = logKey(projectId, chatId);
+  const logsData = await authFetch(`/api/logs/${projectId}/${chatId}`).then(r => r.json());
+  state.logs[lk] = logsData.logs || [];
+}
+
+async function selectChat(projectId, chatId) {
+  state.activeChat[projectId] = chatId;
+  state.activeTab = 'logs';
+  await loadChatLogs(projectId, chatId);
+  renderProjectView();
+}
+
+async function createChat(projectId) {
+  const chats = state.chats[projectId] || [];
+  const res = await authFetch(`/api/chats/${projectId}`, {
+    method: 'POST',
+    body: JSON.stringify({ name: `Chat ${chats.length + 1}` })
+  });
+  const { chat } = await res.json();
+  state.chats[projectId].push(chat);
+  await selectChat(projectId, chat.id);
+}
+
+async function deleteChat(projectId, chatId) {
+  const chats = state.chats[projectId] || [];
+  if (chats.length <= 1) return; // Keep at least one chat
+  await authFetch(`/api/chats/${projectId}/${chatId}`, { method: 'DELETE' });
+  state.chats[projectId] = chats.filter(c => c.id !== chatId);
+  delete state.logs[logKey(projectId, chatId)];
+  if (state.activeChat[projectId] === chatId) {
+    state.activeChat[projectId] = state.chats[projectId][0].id;
+    await loadChatLogs(projectId, state.activeChat[projectId]);
+  }
+  renderProjectView();
+}
+
+function updateChatStatus(projectId, chatId, status) {
+  const dot = document.getElementById(`chat-dot-${chatId}`);
+  if (dot) dot.className = `chat-status-dot ${status}`;
 }
 
 // ── Project View ───────────────────────────────────────────────────────────
@@ -1642,9 +1804,11 @@ function renderProjectView() {
   const project = state.projects.find(p => p.id === state.activeProject);
   if (!project) return;
 
-  const status = state.statuses[project.id] || 'idle';
+  const chatId = getActiveChat(project.id);
+  const status = getActiveChatStatus(project.id);
   const todos = state.todos[project.id] || [];
   const pendingTodos = todos.filter(t => !t.done).length;
+  const chats = state.chats[project.id] || [];
 
   document.getElementById('mainContent').innerHTML = `
     <div class="project-view">
@@ -1659,6 +1823,19 @@ function renderProjectView() {
             : ''
           }
         </div>
+      </div>
+
+      <div class="chat-bar">
+        ${chats.map(c => {
+          const cStatus = (state.statuses[project.id] || {})[c.id] || 'idle';
+          const isActive = c.id === chatId;
+          return `<div class="chat-tab ${isActive ? 'active' : ''}" onclick="selectChat('${project.id}', '${c.id}')">
+            <span class="chat-status-dot ${cStatus}" id="chat-dot-${c.id}"></span>
+            <span class="chat-tab-name">${escapeHtml(c.name)}</span>
+            ${chats.length > 1 ? `<span class="chat-tab-close" onclick="event.stopPropagation();deleteChat('${project.id}','${c.id}')">×</span>` : ''}
+          </div>`;
+        }).join('')}
+        <button class="chat-add-btn" onclick="createChat('${project.id}')" title="Nouveau chat">+</button>
       </div>
 
       <div class="tabs">
@@ -1683,7 +1860,8 @@ function renderProjectView() {
 }
 
 function renderLogsTab() {
-  const logs = state.logs[state.activeProject] || [];
+  const chatId = getActiveChat(state.activeProject);
+  const logs = state.logs[logKey(state.activeProject, chatId)] || [];
   if (logs.length === 0) {
     return `<div class="log-container" id="logContainer"><div class="log-empty" id="logEmpty">Aucun log — envoie un prompt pour démarrer</div></div>`;
   }
@@ -1786,7 +1964,8 @@ async function onTodoDrop(e, targetId) {
 
 function renderPromptArea(projectId, status) {
   const isProcessing = status === 'running';
-  const hasQueued = state._queuedPrompt && state._queuedPrompt.projectId === projectId;
+  const chatId = getActiveChat(projectId);
+  const hasQueued = state._queuedPrompt && state._queuedPrompt.projectId === projectId && state._queuedPrompt.chatId === chatId;
   if (isProcessing) {
     startThinkingTimer();
   }
@@ -1868,7 +2047,9 @@ function handlePromptKey(e, projectId) {
 
 // ── Stop & Thinking timer ──────────────────────────────────────────────────
 async function stopProject(projectId) {
-  await authFetch(`/api/stop/${projectId}`, { method: 'POST' });
+  const chatId = getActiveChat(projectId);
+  if (!chatId) return;
+  await authFetch(`/api/stop/${projectId}/${chatId}`, { method: 'POST' });
 }
 
 let _thinkingStart = null;
@@ -1892,9 +2073,11 @@ function stopThinkingTimer() {
   _thinkingStart = null;
 }
 
-state._queuedPrompt = null; // { projectId, prompt }
+state._queuedPrompt = null; // { projectId, chatId, prompt }
 
 async function sendPrompt(projectId) {
+  const chatId = getActiveChat(projectId);
+  if (!chatId) return;
   const input = document.getElementById('promptInput');
   const btn = document.querySelector('.btn-send');
   if (!input || !input.value.trim()) return;
@@ -1903,29 +2086,28 @@ async function sendPrompt(projectId) {
   input.style.height = 'auto';
 
   // If Claude is busy, queue the prompt for later
-  if (state.statuses[projectId] === 'running') {
-    state._queuedPrompt = { projectId, prompt };
+  const status = getActiveChatStatus(projectId);
+  if (status === 'running') {
+    state._queuedPrompt = { projectId, chatId, prompt };
     renderPromptAreaInPlace(projectId);
     return;
   }
 
-  // Loading state
   if (btn) { btn.disabled = true; btn.textContent = '...'; }
 
   try {
-    await authFetch(`/api/send/${projectId}`, {
+    await authFetch(`/api/send/${projectId}/${chatId}`, {
       method: 'POST',
       body: JSON.stringify({ prompt })
     });
   } catch (e) {
-    // Restore on error
     if (btn) { btn.disabled = false; btn.textContent = 'envoyer'; }
     if (input) input.value = prompt;
   }
 }
 
 function renderPromptAreaInPlace(projectId) {
-  const status = state.statuses[projectId] || 'idle';
+  const status = getActiveChatStatus(projectId);
   const promptArea = document.querySelector('.prompt-area');
   if (promptArea) {
     promptArea.outerHTML = renderPromptArea(projectId, status);
@@ -2074,11 +2256,12 @@ async function sendTodoToLog(todoId) {
   const todos = state.todos[state.activeProject] || [];
   const todo = todos.find(t => t.id === todoId);
   if (!todo) return;
-  if (state.statuses[state.activeProject] === 'running') {
+  const chatId = getActiveChat(state.activeProject);
+  if (getActiveChatStatus(state.activeProject) === 'running') {
     showToast('Claude est déjà en train de travailler', 'info');
     return;
   }
-  await authFetch(`/api/send/${state.activeProject}`, {
+  await authFetch(`/api/send/${state.activeProject}/${chatId}`, {
     method: 'POST',
     body: JSON.stringify({ prompt: todo.text })
   });
@@ -2092,30 +2275,32 @@ async function sendTodoToLog(todoId) {
 }
 
 // Run all pending todos sequentially with user control
-state._todoQueue = null; // { todos, currentIndex, projectId, paused }
-state._statusWaiters = {}; // projectId -> [resolve callbacks]
+state._todoQueue = null; // { todos, currentIndex, projectId, chatId, paused }
+state._statusWaiters = {}; // "projectId:chatId" -> [resolve callbacks]
 
-// Wait for a project to become idle, using WebSocket events (no polling)
-function waitForIdle(projectId, timeoutMs = 300000) {
-  if (state.statuses[projectId] !== 'running') return Promise.resolve();
+// Wait for a chat to become idle, using WebSocket events (no polling)
+function waitForIdle(projectId, chatId, timeoutMs = 300000) {
+  const wk = logKey(projectId, chatId);
+  const chatStatus = (state.statuses[projectId] || {})[chatId] || 'idle';
+  if (chatStatus !== 'running') return Promise.resolve();
   return new Promise((resolve) => {
-    if (!state._statusWaiters[projectId]) state._statusWaiters[projectId] = [];
+    if (!state._statusWaiters[wk]) state._statusWaiters[wk] = [];
     const timer = setTimeout(() => {
-      // Timeout safety — remove waiter and resolve anyway
-      state._statusWaiters[projectId] = (state._statusWaiters[projectId] || []).filter(fn => fn !== resolve);
+      state._statusWaiters[wk] = (state._statusWaiters[wk] || []).filter(fn => fn !== resolve);
       resolve();
     }, timeoutMs);
     const wrappedResolve = () => { clearTimeout(timer); resolve(); };
-    state._statusWaiters[projectId].push(wrappedResolve);
+    state._statusWaiters[wk].push(wrappedResolve);
   });
 }
 
 async function runAllTodos() {
   const projectId = state.activeProject;
+  const chatId = getActiveChat(projectId);
   const todos = (state.todos[projectId] || []).filter(t => !t.done);
   if (todos.length === 0) return;
 
-  state._todoQueue = { todos: [...todos], currentIndex: 0, projectId, paused: false };
+  state._todoQueue = { todos: [...todos], currentIndex: 0, projectId, chatId, paused: false };
   switchTab('logs');
   runNextTodo();
 }
@@ -2123,7 +2308,6 @@ async function runAllTodos() {
 async function runNextTodo() {
   const q = state._todoQueue;
   if (!q || q.currentIndex >= q.todos.length) {
-    // All done
     if (q) state._todoQueue = null;
     updateTodoQueueUI();
     return;
@@ -2132,21 +2316,21 @@ async function runNextTodo() {
   const todo = q.todos[q.currentIndex];
 
   // Wait if claude is still processing (event-driven, no polling)
-  await waitForIdle(q.projectId);
+  await waitForIdle(q.projectId, q.chatId);
 
   if (!state._todoQueue) return;
 
   // Send the todo as prompt
-  const res = await authFetch(`/api/send/${q.projectId}`, {
+  const res = await authFetch(`/api/send/${q.projectId}/${q.chatId}`, {
     method: 'POST',
     body: JSON.stringify({ prompt: todo.text })
   });
 
-  // If send failed (e.g. Claude already running), wait and retry once
+  // If send failed, wait and retry once
   if (!res.ok) {
-    await waitForIdle(q.projectId, 60000);
+    await waitForIdle(q.projectId, q.chatId, 60000);
     if (!state._todoQueue) return;
-    await authFetch(`/api/send/${q.projectId}`, {
+    await authFetch(`/api/send/${q.projectId}/${q.chatId}`, {
       method: 'POST',
       body: JSON.stringify({ prompt: todo.text })
     });
@@ -2163,7 +2347,7 @@ async function runNextTodo() {
   renderTodoList();
 
   // Wait for claude to finish (event-driven via WebSocket)
-  await waitForIdle(q.projectId);
+  await waitForIdle(q.projectId, q.chatId);
 
   if (!state._todoQueue) return;
 
@@ -2203,19 +2387,13 @@ async function respondAndContinue() {
   const prompt = input.value.trim();
   input.value = '';
 
-  await authFetch(`/api/send/${q.projectId}`, {
+  await authFetch(`/api/send/${q.projectId}/${q.chatId}`, {
     method: 'POST',
     body: JSON.stringify({ prompt })
   });
 
   // Wait for claude to finish the follow-up
-  await new Promise(resolve => {
-    const check = () => {
-      if (state.statuses[q.projectId] !== 'running') return resolve();
-      setTimeout(check, 500);
-    };
-    setTimeout(check, 1000);
-  });
+  await waitForIdle(q.projectId, q.chatId);
 
   if (!state._todoQueue) return;
 
@@ -2278,7 +2456,7 @@ function renderTodoList() {
 
 // ── Header update (without full re-render) ─────────────────────────────────
 function updateProjectHeader(projectId) {
-  const status = state.statuses[projectId] || 'idle';
+  const status = getActiveChatStatus(projectId);
   const isProcessing = status === 'running';
   const badge = document.getElementById('statusBadge');
   const dot = document.getElementById('headerDot');
