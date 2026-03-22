@@ -148,6 +148,24 @@
     border: 1px solid var(--border);
     white-space: nowrap;
   }
+  .version-tag.loading {
+    color: transparent;
+    position: relative;
+    min-width: 60px;
+  }
+  .version-tag.loading::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--bg2) 25%, var(--bg3) 50%, var(--bg2) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
 
   .btn-update {
     background: rgba(34,197,94,0.12);
@@ -1202,7 +1220,7 @@
       <div class="ws-dot" id="wsDot"></div>
       <span id="wsLabel">disconnected</span>
     </div>
-    <span class="version-tag" id="versionTag">v...</span>
+    <span class="version-tag loading" id="versionTag">v...</span>
     <button class="btn-update" id="updateBtn" style="display:none" onclick="updateApp()">↑ mise à jour</button>
     <button class="btn-settings" onclick="openSettings()">⚙ config</button>
     <button class="btn-settings" id="logoutBtn" onclick="logout()">⏻ déconnexion</button>
@@ -2202,14 +2220,16 @@ function updateMiniCard(projectId) {
 // ── Settings ───────────────────────────────────────────────────────────────
 // ── Version & Update ───────────────────────────────────────────────────────
 async function checkVersion() {
+  const tag = document.getElementById('versionTag');
   try {
     const data = await authFetch('/api/version').then(r => r.json());
-    const tag = document.getElementById('versionTag');
+    tag.classList.remove('loading');
     tag.textContent = `v${data.version}${data.hash ? ' · ' + data.hash : ''}`;
     const btn = document.getElementById('updateBtn');
     btn.style.display = data.updateAvailable ? 'inline-block' : 'none';
   } catch (e) {
-    // Ignore
+    tag.classList.remove('loading');
+    tag.textContent = 'v?';
   }
 }
 
