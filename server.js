@@ -365,6 +365,9 @@ function parseClaudeEvent(projectId, event) {
 
   if (event.type === 'result') {
     const duration = event.duration_ms ? `${(event.duration_ms / 1000).toFixed(1)}s` : '';
+    // Set idle immediately on result — don't wait for process exit
+    if (processes[projectId]) processes[projectId].status = 'idle';
+    broadcast({ type: 'status', projectId, status: 'idle' });
     return { logType: 'result', text: `✓ Terminé ${duration}`, ts };
   }
 
