@@ -501,6 +501,30 @@ app.post('/api/todos/:projectId/reorder', (req, res) => {
   res.json({ ok: true });
 });
 
+// Bulk import todos
+app.post('/api/todos/:projectId/bulk', (req, res) => {
+  const config = loadConfig();
+  const project = config.projects.find(p => p.id === req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'Not found' });
+  if (!project.todos) project.todos = [];
+  const items = req.body.items;
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'items must be a non-empty array of strings' });
+  }
+  if (items.length > 200) {
+    return res.status(400).json({ error: 'Maximum 200 items per import' });
+  }
+  const todos = items.map(text => ({
+    id: (Date.now() + Math.random()).toString(),
+    text: String(text).substring(0, 500),
+    done: false,
+    createdAt: new Date().toISOString()
+  }));
+  project.todos.push(...todos);
+  saveConfig(config);
+  res.json({ todos });
+});
+
 app.delete('/api/todos/:projectId/:todoId', (req, res) => {
   const config = loadConfig();
   const project = config.projects.find(p => p.id === req.params.projectId);

@@ -547,6 +547,74 @@
   }
   .btn-run-all:hover { background: rgba(34,197,94,0.2); }
 
+  .btn-bulk-import {
+    background: rgba(139,92,246,0.12);
+    border: 1px solid rgba(139,92,246,0.25);
+    color: #a78bfa;
+    padding: 7px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .btn-bulk-import:hover { background: rgba(139,92,246,0.2); }
+
+  .bulk-textarea {
+    width: 100%;
+    min-height: 180px;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: var(--mono);
+    outline: none;
+    resize: vertical;
+    transition: border-color 0.15s;
+    box-sizing: border-box;
+  }
+  .bulk-textarea:focus { border-color: rgba(139,92,246,0.4); }
+  .bulk-textarea::placeholder { color: var(--muted); }
+
+  .bulk-preview {
+    font-size: 12px;
+    color: var(--muted);
+    padding: 4px 0;
+  }
+  .bulk-preview strong { color: #a78bfa; }
+
+  .bulk-preprompt {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--muted);
+    position: relative;
+    cursor: pointer;
+    line-height: 1.5;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .bulk-preprompt:hover { border-color: var(--border2); }
+  .bulk-preprompt-copy {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    cursor: pointer;
+    font-family: var(--sans);
+  }
+  .bulk-preprompt-copy:hover { background: var(--bg3); }
+
   .todo-queue-bar {
     background: var(--bg2);
     border: 1px solid rgba(249,115,22,0.2);
@@ -1160,6 +1228,39 @@
   </div>
 </div>
 
+<!-- BULK IMPORT MODAL -->
+<div class="modal-overlay" id="bulkImportModal" onclick="if(event.target===this)closeBulkImport()">
+  <div class="modal" style="width:560px">
+    <div class="modal-title">Import en masse de todos</div>
+
+    <div class="form-group">
+      <label class="form-label">Pré-prompt à copier dans Claude Code</label>
+      <div class="bulk-preprompt" id="bulkPreprompt" onclick="copyPreprompt()">
+        <button class="bulk-preprompt-copy" id="prepromptCopyBtn">copier</button>
+Donne-moi la liste des tâches à faire sous forme de liste simple, une tâche par ligne, sans préfixe (pas de tiret, numéro, ni checkbox). Chaque ligne = une tâche courte et actionnable. Pas de texte avant ni après la liste. Exemple de format attendu :
+
+Refactorer le module auth
+Ajouter les tests unitaires pour le service user
+Corriger le bug d'affichage sur mobile
+Mettre à jour la documentation API</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Colle ici la liste de tâches (une par ligne)</label>
+      <textarea class="bulk-textarea" id="bulkTextarea" placeholder="Refactorer le module auth
+Ajouter les tests unitaires
+Corriger le bug #123
+..." oninput="updateBulkPreview()"></textarea>
+      <div class="bulk-preview" id="bulkPreview"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn" onclick="closeBulkImport()">annuler</button>
+      <button class="btn btn-primary" id="bulkImportBtn" onclick="submitBulkImport()" disabled>importer</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
 let state = {
@@ -1500,6 +1601,7 @@ function renderTodosTab() {
       <input class="todo-input" id="todoInput" placeholder="Ajouter une tâche pour Claude..."
              onkeydown="if(event.key==='Enter')addTodo()">
       <button class="btn-todo-add" onclick="addTodo()">+ ajouter</button>
+      <button class="btn-bulk-import" onclick="openBulkImport()">⬇ import</button>
       ${pendingCount > 0 ? `<button class="btn-run-all" onclick="runAllTodos()">▶ Lancer tout (${pendingCount})</button>` : ''}
     </div>
     <div class="todo-list" id="todoList">
@@ -1698,6 +1800,84 @@ async function addTodo() {
   if (!state.todos[state.activeProject]) state.todos[state.activeProject] = [];
   state.todos[state.activeProject].push(todo);
   renderTodoList();
+}
+
+// ── Bulk import todos ──────────────────────────────────────────────────────
+function openBulkImport() {
+  document.getElementById('bulkImportModal').classList.add('visible');
+  document.getElementById('bulkTextarea').value = '';
+  updateBulkPreview();
+  setTimeout(() => document.getElementById('bulkTextarea').focus(), 100);
+}
+
+function closeBulkImport() {
+  document.getElementById('bulkImportModal').classList.remove('visible');
+}
+
+function parseBulkLines(text) {
+  return text.split('\n')
+    .map(line => line.replace(/^[\s]*[-*•]\s*/, '')       // - or * or • prefix
+                     .replace(/^[\s]*\d+[.)]\s*/, '')     // 1. or 1) prefix
+                     .replace(/^[\s]*\[[ x]?\]\s*/i, '')  // [ ] or [x] checkbox
+                     .trim())
+    .filter(line => line.length > 0);
+}
+
+function updateBulkPreview() {
+  const text = document.getElementById('bulkTextarea').value;
+  const items = parseBulkLines(text);
+  const preview = document.getElementById('bulkPreview');
+  const btn = document.getElementById('bulkImportBtn');
+  if (items.length === 0) {
+    preview.innerHTML = '';
+    btn.disabled = true;
+    btn.textContent = 'importer';
+  } else {
+    preview.innerHTML = `<strong>${items.length}</strong> tâche${items.length > 1 ? 's' : ''} détectée${items.length > 1 ? 's' : ''}`;
+    btn.disabled = false;
+    btn.textContent = `importer ${items.length} tâche${items.length > 1 ? 's' : ''}`;
+  }
+}
+
+async function copyPreprompt() {
+  const el = document.getElementById('bulkPreprompt');
+  const btn = document.getElementById('prepromptCopyBtn');
+  // Get text content without the button text
+  const text = el.textContent.replace('copier', '').replace('copié !', '').trim();
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.textContent = 'copié !';
+    setTimeout(() => btn.textContent = 'copier', 2000);
+  } catch {
+    // Fallback
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+}
+
+async function submitBulkImport() {
+  const text = document.getElementById('bulkTextarea').value;
+  const items = parseBulkLines(text);
+  if (items.length === 0 || !state.activeProject) return;
+
+  const btn = document.getElementById('bulkImportBtn');
+  btn.disabled = true;
+  btn.textContent = 'import en cours...';
+
+  const res = await authFetch(`/api/todos/${state.activeProject}/bulk`, {
+    method: 'POST',
+    body: JSON.stringify({ items })
+  });
+  const data = await res.json();
+  if (data.todos) {
+    if (!state.todos[state.activeProject]) state.todos[state.activeProject] = [];
+    state.todos[state.activeProject].push(...data.todos);
+    renderTodoList();
+  }
+  closeBulkImport();
 }
 
 async function toggleWaitForUser(todoId) {
