@@ -36,6 +36,7 @@
     font-family: var(--sans);
     font-size: 13px;
     height: 100vh;
+    height: 100dvh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -1138,6 +1139,10 @@
       padding: 0 14px;
       height: 48px;
       gap: 8px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: var(--bg);
     }
     .topbar .logo { display: none; }
     .mobile-project-name { display: block; flex: 1; }
