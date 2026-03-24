@@ -21,10 +21,11 @@
   <a href="#features">Features</a> &bull;
   <a href="#quick-start">Quick Start</a> &bull;
   <a href="#installation">Installation</a> &bull;
+  <a href="#usage">Usage</a> &bull;
   <a href="#deploy-on-a-vps">VPS Deploy</a> &bull;
+  <a href="#securing-your-vps">Security Guide</a> &bull;
   <a href="#configuration">Configuration</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
-  <a href="#security">Security</a> &bull;
   <a href="#contributing">Contributing</a>
 </p>
 
@@ -36,6 +37,7 @@
 - **Real-time logs** — WebSocket-powered live streaming of Claude's output with Markdown rendering
 - **Todo queue** — Create task lists per project, run them sequentially, pause between tasks
 - **Session persistence** — Conversations survive server restarts via `--resume`
+- **Create projects from the UI** — Initialize new projects directly from the dashboard (creates folder + `git init`)
 - **Auto-scan** — Detects git repositories in your projects directory
 - **Authentication** — Optional password protection with rate limiting
 - **HTTPS support** — SSL/TLS with automatic HTTP fallback
@@ -292,6 +294,231 @@ Any provider works. Some starting points:
 
 ---
 
+## Securing your VPS
+
+> **Claude Manager runs Claude with `--dangerously-skip-permissions`, which gives Claude full shell access on your server.** Securing your VPS is not optional — it's critical. At minimum, set up a firewall and restrict access via VPN.
+
+### Firewall (UFW)
+
+UFW (Uncomplicated Firewall) is the standard firewall frontend on Ubuntu/Debian. It wraps iptables and makes rules easy to manage.
+
+#### Basic setup
+
+```bash
+sudo apt install -y ufw
+
+# Default policies: block everything incoming, allow outgoing
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+
+# Allow SSH (so you don't lock yourself out)
+sudo ufw allow ssh
+
+# Allow HTTP + HTTPS for Caddy
+sudo ufw allow 80
+sudo ufw allow 443
+
+# Enable the firewall
+sudo ufw enable
+
+# Verify
+sudo ufw status verbose
+```
+
+> Port 3131 is intentionally **not** opened — Caddy proxies all traffic through 80/443.
+
+#### If you use a VPN (recommended), you can lock down even further
+
+```bash
+# Reset to strict defaults
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+
+# Only allow SSH and VPN
+sudo ufw allow ssh
+sudo ufw allow 51820/udp   # WireGuard
+
+# Allow HTTP/HTTPS only from the VPN subnet
+sudo ufw allow from 10.0.0.0/24 to any port 80
+sudo ufw allow from 10.0.0.0/24 to any port 443
+
+sudo ufw enable
+```
+
+This means Claude Manager is **only accessible through the VPN** — not from the public internet.
+
+#### Useful UFW commands
+
+```bash
+sudo ufw status numbered    # List rules with numbers
+sudo ufw delete 3           # Delete rule #3
+sudo ufw allow from 1.2.3.4 # Allow a specific IP
+sudo ufw reload             # Reload after changes
+sudo ufw disable            # Temporarily disable
+```
+
+### Provider firewalls — watch for conflicts
+
+> **Important:** Many VPS providers (Hetzner, OVH, DigitalOcean, Vultr, AWS, GCP...) offer their own **cloud firewall** in their web dashboard, separate from UFW on the server.
+
+**What to check:**
+- If your provider has a cloud firewall, it runs **before** UFW — traffic blocked at the provider level never reaches your server
+- You need to allow ports in **both** the provider firewall and UFW for traffic to pass through
+- Some providers enable their firewall by default with restrictive rules — if UFW is correctly configured but things don't work, check your provider's dashboard
+
+**Recommended approach:**
+- Use the **provider firewall** as the first layer (only open SSH, HTTP, HTTPS, and WireGuard)
+- Use **UFW** on the server as the second layer with the same or stricter rules
+- This gives you defense in depth — even if one is misconfigured, the other still protects you
+
+| Provider | Firewall location | Notes |
+|---|---|---|
+| Hetzner | Cloud Console → Firewalls | Must be attached to the server after creation |
+| OVH | Manager → IP → Firewall | Disabled by default, enable per IP |
+| DigitalOcean | Networking → Firewalls | Apply to droplets by tag or name |
+| Vultr | Products → Firewall | Create a group then link to instance |
+| AWS | Security Groups | Attached to EC2 instances, stateful |
+| GCP | VPC → Firewall rules | Apply via network tags |
+
+### VPN with WireGuard (recommended)
+
+WireGuard is a modern, fast VPN that's built into the Linux kernel. It's simpler to configure than OpenVPN and performs better.
+
+**With a VPN, Claude Manager is not exposed to the internet at all.** You connect to the VPN from your phone/laptop, and then access the dashboard through the VPN tunnel.
+
+#### Step 1 — Install WireGuard on the VPS
+
+```bash
+sudo apt install -y wireguard
+```
+
+#### Step 2 — Generate server keys
+
+```bash
+cd /etc/wireguard
+umask 077
+wg genkey | tee server_private.key | wg pubkey > server_public.key
+```
+
+#### Step 3 — Server configuration
+
+```bash
+sudo tee /etc/wireguard/wg0.conf > /dev/null << 'EOF'
+[Interface]
+Address = 10.0.0.1/24
+ListenPort = 51820
+PrivateKey = <PASTE server_private.key CONTENT HERE>
+
+# Enable NAT so VPN clients can access the internet through the server
+PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+
+[Peer]
+# Your phone / laptop
+PublicKey = <PASTE client_public.key CONTENT HERE>
+AllowedIPs = 10.0.0.2/32
+EOF
+```
+
+> Replace `eth0` with your actual network interface. Check with `ip route | grep default`.
+
+#### Step 4 — Enable IP forwarding
+
+```bash
+echo "net.ipv4.ip_forward = 1" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+```
+
+#### Step 5 — Start WireGuard
+
+```bash
+sudo systemctl enable wg-quick@wg0
+sudo systemctl start wg-quick@wg0
+
+# Verify
+sudo wg show
+```
+
+#### Step 6 — Allow WireGuard in UFW
+
+```bash
+sudo ufw allow 51820/udp
+```
+
+#### Step 7 — Generate client keys (on the VPS)
+
+```bash
+cd /etc/wireguard
+wg genkey | tee client_private.key | wg pubkey > client_public.key
+```
+
+Copy the `client_public.key` content into the server's `wg0.conf` `[Peer]` section, then restart:
+
+```bash
+sudo systemctl restart wg-quick@wg0
+```
+
+#### Step 8 — Client configuration
+
+Create this config on your phone/laptop:
+
+```ini
+[Interface]
+Address = 10.0.0.2/24
+PrivateKey = <PASTE client_private.key CONTENT HERE>
+DNS = 1.1.1.1
+
+[Peer]
+PublicKey = <PASTE server_public.key CONTENT HERE>
+Endpoint = YOUR_VPS_IP:51820
+AllowedIPs = 10.0.0.0/24
+PersistentKeepalive = 25
+```
+
+> **`AllowedIPs = 10.0.0.0/24`** — only VPN traffic goes through the tunnel (split tunneling). Use `0.0.0.0/0` to route **all** traffic through the VPS.
+
+#### Step 9 — Connect
+
+- **iOS / Android** — Download the [WireGuard app](https://www.wireguard.com/install/), import the config or scan as QR code
+- **macOS / Windows / Linux** — Install WireGuard client and import the `.conf` file
+
+Generate a QR code for easy mobile setup:
+
+```bash
+sudo apt install -y qrencode
+qrencode -t ansiutf8 < /etc/wireguard/client.conf
+```
+
+#### Step 10 — Access Claude Manager through the VPN
+
+Once connected to WireGuard, access Claude Manager at:
+
+```
+http://10.0.0.1:3131
+```
+
+Or if you have Caddy configured, add the VPN IP to your Caddyfile:
+
+```
+10.0.0.1:3131 {
+    reverse_proxy 127.0.0.1:3131
+}
+```
+
+### Security checklist
+
+| Done? | Action | Why |
+|---|---|---|
+| ☐ | Set `AUTH_SECRET` in `.env` | Prevents unauthorized access to the dashboard |
+| ☐ | Enable UFW with restrictive rules | Blocks all unnecessary incoming traffic |
+| ☐ | Set up WireGuard VPN | Makes Claude Manager inaccessible from the public internet |
+| ☐ | Check provider cloud firewall | Prevents conflicts and adds a second layer of defense |
+| ☐ | Use a non-root user | Limits damage if the server is compromised |
+| ☐ | Use HTTPS (Caddy) | Encrypts traffic between your browser and the server |
+| ☐ | Disable password SSH login | Use SSH keys only — run `sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config && sudo systemctl restart sshd` |
+
+---
+
 ## Configuration
 
 Create a `.env` file at the project root:
@@ -330,15 +557,44 @@ Two options:
 
 ## Usage
 
-### 1. Add projects
+Claude Manager can be used in two ways depending on your workflow:
+
+### Local mode — replace the terminal
+
+Run Claude Manager on your development machine as a **visual alternative to the Claude Code CLI**. Instead of juggling multiple terminal tabs, you get a single dashboard to manage all your projects side by side.
+
+```bash
+node server.js
+# Open http://localhost:3131
+```
+
+**Best for:** developers who want a GUI over Claude Code without changing their existing setup. No server, no domain, no configuration — just run and use.
+
+### Remote mode — code from anywhere
+
+Deploy Claude Manager on a **VPS** and access it from any device — your phone, a tablet, a borrowed laptop. Claude runs on the server, so your local machine doesn't need Node.js or Claude Code installed. Add a domain with HTTPS and you have a private, always-on coding assistant accessible from any browser.
+
+```bash
+# On your VPS
+curl -sL https://raw.githubusercontent.com/AytoKyto/claude-manager/main/install.sh | bash
+# → https://claude.yourdomain.com
+```
+
+**Best for:** developers who want to work from multiple devices, or keep Claude running on long tasks without tying up their local machine. See the [VPS deployment guide](#deploy-on-a-vps) for full setup instructions.
+
+---
+
+### Getting started
+
+#### 1. Add projects
 
 Click **config** in the top bar, enter your projects parent directory (e.g. `~/projects`), hit **scan** to detect git repos, select the ones you want, and save.
 
-### 2. Send prompts
+#### 2. Send prompts
 
 Select a project in the sidebar, type a prompt in the input bar, and press Enter. Claude runs with `--dangerously-skip-permissions` and streams output in real time.
 
-### 3. Todo queue
+#### 3. Todo queue
 
 Switch to the **todos** tab to create a task list. You can:
 
@@ -347,7 +603,7 @@ Switch to the **todos** tab to create a task list. You can:
 - **Pause points** — click the pause icon on a todo to make the queue wait for your input after that task
 - **Respond mid-queue** — when paused, send a follow-up message before continuing
 
-### 4. Session resume
+#### 4. Session resume
 
 Claude Manager persists session IDs. When you send a new prompt to a project, it automatically resumes the previous conversation context.
 

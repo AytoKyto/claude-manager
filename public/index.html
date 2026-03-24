@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Claude Manager</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -538,12 +538,12 @@
   .log-text { color: var(--text); white-space: pre-wrap; word-break: break-all; flex: 1; }
   .log-text.stderr { color: var(--amber); }
   .log-text.prompt { color: var(--accent); font-weight: 500; }
-  .log-text.assistant { color: var(--text); }
+  .log-text.assistant { color: var(--text); white-space: normal; word-break: break-word; }
   .log-text.assistant p { margin: 0.3em 0; }
   .log-text.assistant p:first-child { margin-top: 0; }
   .log-text.assistant p:last-child { margin-bottom: 0; }
   .log-text.assistant code { background: var(--bg); padding: 2px 5px; border-radius: 3px; font-family: 'Geist Mono', monospace; font-size: 12px; }
-  .log-text.assistant pre { background: var(--bg); padding: 10px 12px; border-radius: 6px; overflow-x: auto; margin: 0.5em 0; }
+  .log-text.assistant pre { background: var(--bg); padding: 10px 12px; border-radius: 6px; overflow-x: auto; margin: 0.5em 0; white-space: pre-wrap; word-break: break-all; }
   .log-text.assistant pre code { background: none; padding: 0; font-size: 12px; }
   .log-text.assistant ul, .log-text.assistant ol { margin: 0.3em 0; padding-left: 1.5em; }
   .log-text.assistant li { margin: 0.15em 0; }
@@ -1114,14 +1114,28 @@
     .mobile-menu-btn { display: block; }
     .mobile-back-btn { display: none; }
 
-    .topbar {
-      padding: 0 0.75rem;
-      height: 44px;
-      gap: 8px;
+    /* ── Safe area (encoche iOS / PWA) ── */
+    body {
+      padding-top: env(safe-area-inset-top);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+      padding-bottom: env(safe-area-inset-bottom);
     }
-    .topbar .logo { font-size: 13px; gap: 6px; }
+
+    /* ── Topbar ── */
+    .topbar {
+      padding: 0 14px;
+      height: 48px;
+      gap: 8px;
+      overflow: hidden;
+    }
+    .topbar .logo { font-size: 12px; gap: 5px; white-space: nowrap; }
     .btn-danger-tag { display: none; }
-    .btn-settings { font-size: 11px; padding: 5px 10px; }
+    .topbar-right { gap: 8px; min-width: 0; flex-shrink: 1; }
+    .ws-indicator span { display: none; }
+    .version-tag { display: none; }
+    .btn-update { font-size: 10px; padding: 3px 8px; }
+    .btn-settings { font-size: 11px; padding: 5px 8px; white-space: nowrap; }
 
     .main {
       position: relative;
@@ -1147,63 +1161,94 @@
       width: 100%;
     }
 
-    /* Project view */
+    /* ── Project header ── */
     .project-header {
-      flex-wrap: wrap;
-      gap: 6px !important;
-      padding: 10px 12px !important;
+      gap: 8px !important;
+      padding: 12px 16px !important;
+      min-width: 0;
+      overflow: hidden;
     }
-    .project-title { font-size: 14px !important; }
+    .project-title {
+      font-size: 14px !important;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+      flex: 1;
+    }
     .project-path-badge { display: none; }
+    .status-badge { font-size: 10px !important; padding: 2px 8px !important; flex-shrink: 0; }
+    .header-actions { margin-left: 0; flex-shrink: 0; }
+    .header-actions .btn { font-size: 11px !important; padding: 5px 10px !important; }
 
-    .tabs { padding: 0 12px !important; }
+    /* ── Chat bar ── */
+    .chat-bar { padding: 6px 14px !important; }
+    .chat-tab { font-size: 11px !important; padding: 5px 10px !important; }
+
+    .tabs { padding: 0 14px !important; }
     .tab { padding: 8px 12px !important; font-size: 11px !important; }
 
-    /* Logs */
-    .log-container { padding: 10px 12px !important; }
+    /* ── Logs ── */
+    .log-container { padding: 12px 16px !important; }
     .log-line { gap: 6px !important; }
     .log-ts { font-size: 9px !important; }
     .log-text { font-size: 12px !important; }
     .log-text.assistant pre { font-size: 11px !important; }
 
-    /* Prompt area */
-    .prompt-area { padding: 10px 12px !important; gap: 6px !important; }
-    .prompt-input { font-size: 16px !important; padding: 10px 12px !important; }
-    .btn-send { padding: 10px 14px !important; font-size: 14px !important; }
+    /* ── Prompt area (vertical layout: textarea on top, buttons below) ── */
+    .prompt-area {
+      padding: 12px 16px !important;
+      gap: 8px !important;
+      flex-direction: column !important;
+      align-items: stretch !important;
+    }
+    .prompt-input {
+      font-size: 16px !important;
+      padding: 10px 12px !important;
+      width: 100% !important;
+    }
+    .prompt-area > div {
+      justify-content: flex-end;
+    }
+    .btn-send {
+      padding: 10px 20px !important;
+      font-size: 14px !important;
+      width: 100%;
+      justify-content: center;
+    }
 
-    /* Thinking indicator */
-    .thinking-indicator { padding: 6px 10px !important; font-size: 11px !important; }
+    /* ── Thinking indicator ── */
+    .thinking-indicator { padding: 8px 16px !important; font-size: 11px !important; }
 
-    /* Todos */
-    .todos-container { padding: 10px 12px !important; }
-    .todo-add { flex-wrap: wrap; gap: 6px !important; }
+    /* ── Todos ── */
+    .todos-container { padding: 12px 16px !important; }
+    .todo-add { flex-wrap: wrap; gap: 8px !important; }
     .todo-input { min-width: 0 !important; flex: 1 !important; font-size: 16px !important; padding: 10px 12px !important; }
-    .todo-item { padding: 8px 10px !important; gap: 6px !important; }
+    .todo-item { padding: 10px 12px !important; gap: 8px !important; }
     .todo-text { font-size: 12px !important; }
     .todo-send-btn, .todo-pause-btn { opacity: 1 !important; }
     .todo-drag-handle { opacity: 0.5 !important; }
 
-    /* Queue bar */
-    .todo-queue-bar { margin: 0 12px 6px !important; padding: 10px 12px !important; }
+    /* ── Queue bar ── */
+    .todo-queue-bar { margin: 0 16px 8px !important; padding: 10px 12px !important; }
     .todo-queue-actions { flex-wrap: wrap; }
     .todo-queue-input { min-width: 120px; font-size: 16px !important; padding: 10px 12px !important; }
 
-    /* Settings modal */
+    /* ── Settings modal ── */
     .modal { width: 95vw !important; max-height: 85vh !important; overflow-y: auto; padding: 16px !important; }
     .form-input { font-size: 16px !important; }
     .bulk-textarea { font-size: 16px !important; }
 
-    /* Empty state */
+    /* ── Empty state ── */
     .empty-state { padding: 2rem !important; }
     .empty-state-icon { font-size: 36px !important; }
   }
 
   @media (max-width: 380px) {
+    .topbar .logo { font-size: 11px; }
     .topbar .logo span { display: none; }
-    .ws-indicator span { display: none; }
-    .btn-settings { padding: 5px 8px; }
+    .btn-settings { padding: 4px 6px; font-size: 10px; }
     .btn-run-all { font-size: 11px; padding: 6px 10px; }
-    .header-actions button { font-size: 11px !important; padding: 5px 10px !important; }
   }
 
   /* TOAST NOTIFICATIONS */
@@ -1333,8 +1378,9 @@
   <div class="sidebar" id="sidebar">
     <div class="sidebar-section">projets</div>
     <div id="projectList"></div>
-    <div class="sidebar-footer">
-      <button class="btn-add-project" onclick="openSettings()">+ ajouter un projet</button>
+    <div class="sidebar-footer" style="display:flex;flex-direction:column;gap:6px">
+      <button class="btn-add-project" onclick="openCreateProject()">+ nouveau projet</button>
+      <button class="btn-add-project" onclick="openSettings()">⚙ gérer les projets</button>
     </div>
   </div>
 
@@ -1378,6 +1424,25 @@
     <div class="modal-actions">
       <button class="btn" onclick="closeSettings()">annuler</button>
       <button class="btn btn-primary" onclick="saveSettings()">enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- CREATE PROJECT MODAL -->
+<div class="modal-overlay" id="createProjectModal" onclick="if(event.target===this)closeCreateProject()">
+  <div class="modal" style="width:420px">
+    <div class="modal-title">Nouveau projet</div>
+    <div class="form-group">
+      <label class="form-label">Nom du projet</label>
+      <input class="form-input" id="createProjectName" placeholder="mon-nouveau-projet"
+             onkeydown="if(event.key==='Enter')createProject()"
+             oninput="updateCreateProjectPreview()">
+    </div>
+    <div id="createProjectDir" style="font-family:var(--mono);font-size:11px;color:var(--muted);padding:0 2px"></div>
+    <div id="createProjectError" style="color:var(--red);font-size:12px;display:none"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeCreateProject()">annuler</button>
+      <button class="btn btn-primary" onclick="createProject()">créer</button>
     </div>
   </div>
 </div>
@@ -2523,6 +2588,71 @@ async function updateApp() {
   }
 }
 
+// ── Create project ─────────────────────────────────────────────────────────
+async function openCreateProject() {
+  const config = await authFetch('/api/config').then(r => r.json());
+  const dir = config.projectsDir || '';
+  document.getElementById('createProjectName').value = '';
+  document.getElementById('createProjectError').style.display = 'none';
+  const dirEl = document.getElementById('createProjectDir');
+  dirEl.dataset.base = dir;
+  dirEl.textContent = dir ? `Sera créé dans : ${dir}/` : 'Aucun dossier parent configuré — configure-le dans ⚙ config';
+  document.getElementById('createProjectModal').classList.add('visible');
+  if (!dir) {
+    document.getElementById('createProjectError').textContent = 'Configure d\'abord un dossier parent dans ⚙ config';
+    document.getElementById('createProjectError').style.display = 'block';
+  }
+  setTimeout(() => document.getElementById('createProjectName').focus(), 100);
+}
+
+function updateCreateProjectPreview() {
+  const name = document.getElementById('createProjectName').value.trim();
+  const dirEl = document.getElementById('createProjectDir');
+  const base = dirEl.dataset.base || '';
+  if (base && name) {
+    dirEl.textContent = `Sera créé dans : ${base}/${name}`;
+  } else if (base) {
+    dirEl.textContent = `Sera créé dans : ${base}/`;
+  }
+}
+
+function closeCreateProject() {
+  document.getElementById('createProjectModal').classList.remove('visible');
+}
+
+async function createProject() {
+  const name = document.getElementById('createProjectName').value.trim();
+  const errorEl = document.getElementById('createProjectError');
+  if (!name) {
+    errorEl.textContent = 'Le nom du projet est requis';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  try {
+    const res = await authFetch('/api/create-project', {
+      method: 'POST',
+      body: JSON.stringify({ name })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errorEl.textContent = data.error || 'Erreur lors de la création';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    state.projects.push(data.project);
+    state.statuses[data.project.id] = {};
+    closeCreateProject();
+    renderSidebar();
+    selectProject(data.project.id);
+    showToast(`Projet "${name}" créé`);
+  } catch (err) {
+    errorEl.textContent = 'Erreur réseau';
+    errorEl.style.display = 'block';
+  }
+}
+
 async function openSettings() {
   const config = await authFetch('/api/config').then(r => r.json());
   document.getElementById('projectsDirInput').value = config.projectsDir || '';
@@ -2655,7 +2785,13 @@ function showToast(message, type = 'info', duration = 4000) {
 
 function renderMd(str) {
   if (!str) return '';
-  return marked.parse(escapeHtml(str), { breaks: true });
+  if (typeof marked === 'undefined' || !marked.parse) return escapeHtml(str);
+  try {
+    return marked.parse(escapeHtml(str), { breaks: true });
+  } catch (e) {
+    console.warn('marked.parse failed:', e);
+    return escapeHtml(str);
+  }
 }
 
 // Close modal on overlay click

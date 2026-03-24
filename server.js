@@ -197,6 +197,42 @@ app.post('/api/config', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Create project ──────────────────────────────────────────────────────────
+app.post('/api/create-project', (req, res) => {
+  const config = loadConfig();
+  const dir = config.projectsDir;
+  if (!dir || !fs.existsSync(dir)) {
+    return res.status(400).json({ error: 'projectsDir not configured or does not exist' });
+  }
+
+  const name = (req.body.name || '').trim();
+  if (!name) {
+    return res.status(400).json({ error: 'Project name is required' });
+  }
+  if (/[\/\\:*?"<>|]/.test(name)) {
+    return res.status(400).json({ error: 'Project name contains invalid characters' });
+  }
+
+  const projectPath = path.join(dir, name);
+  if (fs.existsSync(projectPath)) {
+    return res.status(409).json({ error: 'A folder with this name already exists' });
+  }
+
+  try {
+    fs.mkdirSync(projectPath, { recursive: true });
+    execSync('git init', { cwd: projectPath, stdio: 'ignore' });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to create project: ' + err.message });
+  }
+
+  const project = { id: name, name, path: projectPath };
+  config.projects = config.projects || [];
+  config.projects.push(project);
+  saveConfig(config);
+
+  res.json({ ok: true, project });
+});
+
 // ── Chats CRUD ──────────────────────────────────────────────────────────────
 app.get('/api/chats/:projectId', (req, res) => {
   const config = loadConfig();
