@@ -2787,7 +2787,7 @@ function renderMd(str) {
   if (!str) return '';
   if (typeof marked === 'undefined' || !marked.parse) return escapeHtml(str);
   try {
-    return marked.parse(escapeHtml(str), { breaks: true });
+    return marked.parse(str, { breaks: true });
   } catch (e) {
     console.warn('marked.parse failed:', e);
     return escapeHtml(str);

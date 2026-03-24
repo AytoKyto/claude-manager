@@ -9,7 +9,7 @@ set -e
 # configure un mot de passe, crée un service systemd, et lance le tout.
 # ─────────────────────────────────────────────────────────────────────────────
 
-REPO="https://github.com/AytoKyto/claude-manager.git"
+REPO="https://github.com/AytoKyto/maker-copilot.git"
 INSTALL_DIR="$HOME/claude-manager"
 SERVICE_NAME="claude-manager"
 

@@ -607,21 +607,40 @@ app.delete('/api/todos/:projectId/:todoId', (req, res) => {
 // ── Version & Update ────────────────────────────────────────────────────────
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
 
-app.get('/api/version', (req, res) => {
+app.get('/api/version', async (req, res) => {
+  let hash = null;
+  let updateAvailable = false;
+
+  // Get local git hash
   try {
+    hash = execSync('git rev-parse HEAD', { cwd: __dirname }).toString().trim().substring(0, 7);
+  } catch (e) { /* not a git repo */ }
+
+  // Method 1: git fetch + compare hashes
+  try {
+    execSync('git fetch --quiet', { cwd: __dirname, timeout: 10000 });
     const localHash = execSync('git rev-parse HEAD', { cwd: __dirname }).toString().trim();
-    let updateAvailable = false;
+    const remoteHash = execSync('git rev-parse origin/main', { cwd: __dirname }).toString().trim();
+    if (localHash !== remoteHash) updateAvailable = true;
+  } catch (e) { /* fetch failed, try method 2 */ }
+
+  // Method 2: check remote package.json version via GitHub API
+  if (!updateAvailable) {
     try {
-      execSync('git fetch --quiet', { cwd: __dirname, timeout: 10000 });
-      const remoteHash = execSync('git rev-parse origin/main', { cwd: __dirname }).toString().trim();
-      updateAvailable = localHash !== remoteHash;
-    } catch (e) {
-      // Fetch failed — ignore
-    }
-    res.json({ version: pkg.version, hash: localHash.substring(0, 7), updateAvailable });
-  } catch (e) {
-    res.json({ version: pkg.version, hash: null, updateAvailable: false });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const r = await fetch('https://raw.githubusercontent.com/AytoKyto/maker-copilot/main/package.json', { signal: controller.signal });
+      clearTimeout(timeout);
+      if (r.ok) {
+        const remotePkg = await r.json();
+        if (remotePkg.version && remotePkg.version !== pkg.version) {
+          updateAvailable = true;
+        }
+      }
+    } catch (e) { /* no network — ignore */ }
   }
+
+  res.json({ version: pkg.version, hash, updateAvailable });
 });
 
 app.post('/api/update', (req, res) => {

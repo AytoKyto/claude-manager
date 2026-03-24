@@ -48,7 +48,7 @@
 ## Quick Start
 
 ```bash
-git clone https://github.com/AytoKyto/claude-manager.git
+git clone https://github.com/AytoKyto/maker-copilot.git
 cd claude-manager
 npm install
 node server.js
@@ -61,7 +61,7 @@ Open **http://localhost:3131** and configure your projects directory.
 ### One-line install (Linux / macOS)
 
 ```bash
-curl -sL https://raw.githubusercontent.com/AytoKyto/claude-manager/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/AytoKyto/maker-copilot/main/install.sh | bash
 ```
 
 The install script will:
@@ -74,7 +74,7 @@ The install script will:
 ### Manual install
 
 ```bash
-git clone https://github.com/AytoKyto/claude-manager.git ~/claude-manager
+git clone https://github.com/AytoKyto/maker-copilot.git ~/claude-manager
 cd ~/claude-manager
 npm install
 cp .env.example .env  # edit with your values
@@ -141,7 +141,7 @@ claude --version
 **Option A — One-line installer** (interactive, sets up everything):
 
 ```bash
-curl -sL https://raw.githubusercontent.com/AytoKyto/claude-manager/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/AytoKyto/maker-copilot/main/install.sh | bash
 ```
 
 The installer will ask you to choose between:
@@ -151,7 +151,7 @@ The installer will ask you to choose between:
 **Option B — Manual**:
 
 ```bash
-git clone https://github.com/AytoKyto/claude-manager.git ~/claude-manager
+git clone https://github.com/AytoKyto/maker-copilot.git ~/claude-manager
 cd ~/claude-manager
 npm install
 ```
@@ -576,7 +576,7 @@ Deploy Claude Manager on a **VPS** and access it from any device — your phone,
 
 ```bash
 # On your VPS
-curl -sL https://raw.githubusercontent.com/AytoKyto/claude-manager/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/AytoKyto/maker-copilot/main/install.sh | bash
 # → https://claude.yourdomain.com
 ```
 
