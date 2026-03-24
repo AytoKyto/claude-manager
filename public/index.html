@@ -1088,6 +1088,17 @@
     line-height: 1;
   }
 
+  .mobile-project-name {
+    display: none;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
   .sidebar-overlay {
     display: none;
     position: fixed;
@@ -1111,7 +1122,7 @@
 
   /* ── Responsive ──────────────────────────────────────────────────────── */
   @media (max-width: 768px) {
-    .mobile-menu-btn { display: block; }
+    .mobile-menu-btn { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 36px; height: 36px; font-size: 20px; }
     .mobile-back-btn { display: none; }
 
     /* ── Safe area (encoche iOS / PWA) ── */
@@ -1127,9 +1138,9 @@
       padding: 0 14px;
       height: 48px;
       gap: 8px;
-      overflow: hidden;
     }
-    .topbar .logo { font-size: 12px; gap: 5px; white-space: nowrap; }
+    .topbar .logo { display: none; }
+    .mobile-project-name { display: block; flex: 1; }
     .btn-danger-tag { display: none; }
     .topbar-right { gap: 8px; min-width: 0; flex-shrink: 1; }
     .ws-indicator span { display: none; }
@@ -1245,8 +1256,7 @@
   }
 
   @media (max-width: 380px) {
-    .topbar .logo { font-size: 11px; }
-    .topbar .logo span { display: none; }
+    .mobile-project-name { font-size: 12px; }
     .btn-settings { padding: 4px 6px; font-size: 10px; }
     .btn-run-all { font-size: 11px; padding: 6px 10px; }
   }
@@ -1357,8 +1367,9 @@
   <button class="mobile-menu-btn" onclick="toggleSidebar()">☰</button>
   <div class="logo">
     <div class="logo-dot"></div>
-    claude manager
+    <span>claude manager</span>
   </div>
+  <span class="mobile-project-name" id="mobileProjectName"></span>
   <span class="btn-danger-tag">--dangerously-skip-permissions</span>
   <div class="topbar-right">
     <div class="ws-indicator">
@@ -1794,6 +1805,11 @@ async function selectProject(projectId) {
   state.activeProject = projectId;
   state.activeTab = 'logs';
   closeSidebar();
+
+  // Update mobile topbar project name
+  const project = state.projects.find(p => p.id === projectId);
+  const mobileNameEl = document.getElementById('mobileProjectName');
+  if (mobileNameEl) mobileNameEl.textContent = project ? project.name : '';
 
   document.querySelectorAll('.project-item').forEach(el => el.classList.remove('active'));
   const sidebarItem = document.getElementById(`sidebar-${projectId}`);
