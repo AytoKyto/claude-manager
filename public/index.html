@@ -7,7 +7,7 @@
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Geist:wght@300;400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"></script>
 <style>
   :root {
     --bg: #0c0c0d;
@@ -2783,13 +2783,28 @@ function showToast(message, type = 'info', duration = 4000) {
   }, duration);
 }
 
+function getMarkedParse() {
+  if (typeof marked === 'undefined') return null;
+  // marked v15: globalThis.marked = { parse, marked, ... }
+  if (typeof marked.parse === 'function') return marked.parse.bind(marked);
+  // marked may also be a function itself
+  if (typeof marked === 'function') return marked;
+  // some builds nest: marked.marked.parse
+  if (marked.marked && typeof marked.marked.parse === 'function') return marked.marked.parse.bind(marked.marked);
+  return null;
+}
+
 function renderMd(str) {
   if (!str) return '';
-  if (typeof marked === 'undefined' || !marked.parse) return escapeHtml(str);
+  const parse = getMarkedParse();
+  if (!parse) {
+    console.warn('[renderMd] marked library not loaded, falling back to escapeHtml');
+    return escapeHtml(str);
+  }
   try {
-    return marked.parse(str, { breaks: true });
+    return parse(str, { breaks: true });
   } catch (e) {
-    console.warn('marked.parse failed:', e);
+    console.warn('[renderMd] marked.parse failed:', e);
     return escapeHtml(str);
   }
 }
