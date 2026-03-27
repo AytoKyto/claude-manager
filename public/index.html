@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -1358,12 +1358,12 @@
       claude manager
     </div>
     <div class="form-group">
-      <label class="form-label">Mot de passe</label>
+      <label class="form-label">Password</label>
       <input class="form-input" id="loginPassword" type="password" placeholder="AUTH_SECRET"
              onkeydown="if(event.key==='Enter')doLogin()">
     </div>
-    <div class="login-error" id="loginError">Mot de passe incorrect</div>
-    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doLogin()">Connexion</button>
+    <div class="login-error" id="loginError">Incorrect password</div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doLogin()">Login</button>
   </div>
 </div>
 
@@ -1382,9 +1382,9 @@
       <span id="wsLabel">disconnected</span>
     </div>
     <span class="version-tag loading" id="versionTag">v...</span>
-    <button class="btn-update" id="updateBtn" style="display:none" onclick="updateApp()">↑ mise à jour</button>
+    <button class="btn-update" id="updateBtn" style="display:none" onclick="updateApp()">↑ update</button>
     <button class="btn-settings" onclick="openSettings()">⚙ config</button>
-    <button class="btn-settings" id="logoutBtn" onclick="logout()">⏻ déconnexion</button>
+    <button class="btn-settings" id="logoutBtn" onclick="logout()">⏻ logout</button>
   </div>
 </div>
 
@@ -1392,11 +1392,11 @@
   <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
   <!-- SIDEBAR -->
   <div class="sidebar" id="sidebar">
-    <div class="sidebar-section">projets</div>
+    <div class="sidebar-section">projects</div>
     <div id="projectList"></div>
     <div class="sidebar-footer" style="display:flex;flex-direction:column;gap:6px">
-      <button class="btn-add-project" onclick="openCreateProject()">+ nouveau projet</button>
-      <button class="btn-add-project" onclick="openSettings()">⚙ gérer les projets</button>
+      <button class="btn-add-project" onclick="openCreateProject()">+ new project</button>
+      <button class="btn-add-project" onclick="openSettings()">⚙ manage projects</button>
     </div>
   </div>
 
@@ -1404,8 +1404,8 @@
   <div class="content" id="mainContent">
     <div class="empty-state" id="emptyState">
       <div class="empty-state-icon">⌘</div>
-      <p>Sélectionne un projet</p>
-      <p style="font-size:11px;color:var(--muted);margin-top:4px">ou configure tes projets via ⚙ config</p>
+      <p>Select a project</p>
+      <p style="font-size:11px;color:var(--muted);margin-top:4px">or configure your projects via ⚙ config</p>
     </div>
   </div>
 </div>
@@ -1413,33 +1413,33 @@
 <!-- SETTINGS MODAL -->
 <div class="modal-overlay" id="settingsModal">
   <div class="modal">
-    <div class="modal-title">Configuration</div>
+    <div class="modal-title">Settings</div>
 
     <div class="form-group">
-      <label class="form-label">Dossier parent des projets</label>
-      <input class="form-input" id="projectsDirInput" placeholder="/Users/toi/projets" />
+      <label class="form-label">Projects parent directory</label>
+      <input class="form-input" id="projectsDirInput" placeholder="/home/user/projects" />
     </div>
 
     <div class="form-group">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <label class="form-label" style="margin:0">Dépôts git détectés</label>
-        <button class="btn" style="font-size:11px;padding:4px 10px" onclick="scanRepos()">scanner</button>
+        <label class="form-label" style="margin:0">Detected git repositories</label>
+        <button class="btn" style="font-size:11px;padding:4px 10px" onclick="scanRepos()">scan</button>
       </div>
       <div class="scan-results" id="scanResults">
-        <div style="color:var(--muted);font-size:12px;padding:8px">Lance un scan pour détecter les repos</div>
+        <div style="color:var(--muted);font-size:12px;padding:8px">Run a scan to detect repositories</div>
       </div>
     </div>
 
     <div class="form-group">
-      <label class="form-label">Projets actifs</label>
+      <label class="form-label">Active projects</label>
       <div class="project-list-manage" id="projectListManage">
-        <div style="color:var(--muted);font-size:12px;padding:8px">Aucun projet configuré</div>
+        <div style="color:var(--muted);font-size:12px;padding:8px">No projects configured</div>
       </div>
     </div>
 
     <div class="modal-actions">
-      <button class="btn" onclick="closeSettings()">annuler</button>
-      <button class="btn btn-primary" onclick="saveSettings()">enregistrer</button>
+      <button class="btn" onclick="closeSettings()">cancel</button>
+      <button class="btn btn-primary" onclick="saveSettings()">save</button>
     </div>
   </div>
 </div>
@@ -1447,18 +1447,18 @@
 <!-- CREATE PROJECT MODAL -->
 <div class="modal-overlay" id="createProjectModal" onclick="if(event.target===this)closeCreateProject()">
   <div class="modal" style="width:420px">
-    <div class="modal-title">Nouveau projet</div>
+    <div class="modal-title">New project</div>
     <div class="form-group">
-      <label class="form-label">Nom du projet</label>
-      <input class="form-input" id="createProjectName" placeholder="mon-nouveau-projet"
+      <label class="form-label">Project name</label>
+      <input class="form-input" id="createProjectName" placeholder="my-new-project"
              onkeydown="if(event.key==='Enter')createProject()"
              oninput="updateCreateProjectPreview()">
     </div>
     <div id="createProjectDir" style="font-family:var(--mono);font-size:11px;color:var(--muted);padding:0 2px"></div>
     <div id="createProjectError" style="color:var(--red);font-size:12px;display:none"></div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeCreateProject()">annuler</button>
-      <button class="btn btn-primary" onclick="createProject()">créer</button>
+      <button class="btn" onclick="closeCreateProject()">cancel</button>
+      <button class="btn btn-primary" onclick="createProject()">create</button>
     </div>
   </div>
 </div>
@@ -1466,32 +1466,32 @@
 <!-- BULK IMPORT MODAL -->
 <div class="modal-overlay" id="bulkImportModal" onclick="if(event.target===this)closeBulkImport()">
   <div class="modal" style="width:560px">
-    <div class="modal-title">Import en masse de todos</div>
+    <div class="modal-title">Bulk import todos</div>
 
     <div class="form-group">
-      <label class="form-label">Pré-prompt à copier dans Claude Code</label>
+      <label class="form-label">Pre-prompt to copy into Claude Code</label>
       <div class="bulk-preprompt" id="bulkPreprompt" onclick="copyPreprompt()">
-        <button class="bulk-preprompt-copy" id="prepromptCopyBtn">copier</button>
-Donne-moi la liste des tâches à faire sous forme de liste simple, une tâche par ligne, sans préfixe (pas de tiret, numéro, ni checkbox). Chaque ligne = une tâche courte et actionnable. Pas de texte avant ni après la liste. Exemple de format attendu :
+        <button class="bulk-preprompt-copy" id="prepromptCopyBtn">copy</button>
+Give me the list of tasks as a simple list, one task per line, without prefix (no dash, number, or checkbox). Each line = one short actionable task. No text before or after the list. Expected format:
 
-Refactorer le module auth
-Ajouter les tests unitaires pour le service user
-Corriger le bug d'affichage sur mobile
-Mettre à jour la documentation API</div>
+Refactor the auth module
+Add unit tests for the user service
+Fix the mobile display bug
+Update the API documentation</div>
     </div>
 
     <div class="form-group">
-      <label class="form-label">Colle ici la liste de tâches (une par ligne)</label>
-      <textarea class="bulk-textarea" id="bulkTextarea" placeholder="Refactorer le module auth
-Ajouter les tests unitaires
-Corriger le bug #123
+      <label class="form-label">Paste your task list here (one per line)</label>
+      <textarea class="bulk-textarea" id="bulkTextarea" placeholder="Refactor the auth module
+Add unit tests
+Fix bug #123
 ..." oninput="updateBulkPreview()"></textarea>
       <div class="bulk-preview" id="bulkPreview"></div>
     </div>
 
     <div class="modal-actions">
-      <button class="btn" onclick="closeBulkImport()">annuler</button>
-      <button class="btn btn-primary" id="bulkImportBtn" onclick="submitBulkImport()" disabled>importer</button>
+      <button class="btn" onclick="closeBulkImport()">cancel</button>
+      <button class="btn btn-primary" id="bulkImportBtn" onclick="submitBulkImport()" disabled>import</button>
     </div>
   </div>
 </div>
@@ -1547,15 +1547,15 @@ function authFetch(url, opts = {}) {
     }
     if (!r.ok && r.status !== 401) {
       r.clone().json().then(data => {
-        showToast(data.error || `Erreur ${r.status}`, 'error');
+        showToast(data.error || `Error ${r.status}`, 'error');
       }).catch(() => {
-        showToast(`Erreur ${r.status}`, 'error');
+        showToast(`Error ${r.status}`, 'error');
       });
     }
     return r;
   }).catch(err => {
     if (err.message !== 'Unauthorized') {
-      showToast('Erreur réseau', 'error');
+      showToast('Network error', 'error');
     }
     throw err;
   });
@@ -1613,7 +1613,7 @@ function connectWS() {
 
   ws.onopen = () => {
     document.getElementById('wsDot').classList.add('connected');
-    document.getElementById('wsLabel').textContent = 'connecté';
+    document.getElementById('wsLabel').textContent = 'connected';
   };
 
   ws.onclose = () => {
@@ -1681,7 +1681,7 @@ async function checkAuthAndInit() {
     const data = await res.json();
     if (res.ok) {
       document.getElementById('loginOverlay').classList.add('hidden');
-      // Afficher le bouton déconnexion si l'auth est activée
+      // Show logout button if auth is enabled
       if (data.authRequired !== false) {
         document.getElementById('logoutBtn').style.display = '';
       }
@@ -1726,7 +1726,7 @@ async function init() {
 function renderSidebar() {
   const el = document.getElementById('projectList');
   if (state.projects.length === 0) {
-    el.innerHTML = `<div style="padding:0.75rem 1rem;color:var(--muted);font-size:12px">Aucun projet</div>`;
+    el.innerHTML = `<div style="padding:0.75rem 1rem;color:var(--muted);font-size:12px">No projects</div>`;
     return;
   }
   el.innerHTML = state.projects.map(p => `
@@ -1923,7 +1923,7 @@ function renderProjectView() {
             ${chats.length > 1 ? `<span class="chat-tab-close" onclick="event.stopPropagation();deleteChat('${project.id}','${c.id}')">×</span>` : ''}
           </div>`;
         }).join('')}
-        <button class="chat-add-btn" onclick="createChat('${project.id}')" title="Nouveau chat">+</button>
+        <button class="chat-add-btn" onclick="createChat('${project.id}')" title="New chat">+</button>
       </div>
 
       <div class="tabs">
@@ -1951,7 +1951,7 @@ function renderLogsTab() {
   const chatId = getActiveChat(state.activeProject);
   const logs = state.logs[logKey(state.activeProject, chatId)] || [];
   if (logs.length === 0) {
-    return `<div class="log-container" id="logContainer"><div class="log-empty" id="logEmpty">Aucun log — envoie un prompt pour démarrer</div></div>`;
+    return `<div class="log-container" id="logContainer"><div class="log-empty" id="logEmpty">No logs — send a prompt to get started</div></div>`;
   }
   return `<div class="log-container" id="logContainer">
     ${logs.map(l => `
@@ -1968,15 +1968,15 @@ function renderTodosTab() {
   const pendingCount = todos.filter(t => !t.done).length;
   return `<div class="todos-container">
     <div class="todo-add">
-      <input class="todo-input" id="todoInput" placeholder="Ajouter une tâche pour Claude..."
+      <input class="todo-input" id="todoInput" placeholder="Add a task for Claude..."
              onkeydown="if(event.key==='Enter')addTodo()">
-      <button class="btn-todo-add" onclick="addTodo()">+ ajouter</button>
+      <button class="btn-todo-add" onclick="addTodo()">+ add</button>
       <button class="btn-bulk-import" onclick="openBulkImport()">⬇ import</button>
-      ${pendingCount > 0 ? `<button class="btn-run-all" onclick="runAllTodos()">▶ Lancer tout (${pendingCount})</button>` : ''}
+      ${pendingCount > 0 ? `<button class="btn-run-all" onclick="runAllTodos()">▶ Run all (${pendingCount})</button>` : ''}
     </div>
     <div class="todo-list" id="todoList">
       ${todos.length === 0
-        ? `<div class="todo-empty">Aucune tâche — ajoute des todos à envoyer à Claude</div>`
+        ? `<div class="todo-empty">No tasks — add todos to send to Claude</div>`
         : todos.map(t => renderTodoItem(t)).join('')}
     </div>
   </div>`;
@@ -1993,8 +1993,8 @@ function renderTodoItem(t) {
     <span class="todo-drag-handle">⠿</span>
     <button class="todo-check ${t.done ? 'checked' : ''}" onclick="toggleTodo('${t.id}')"></button>
     <span class="todo-text ${t.done ? 'done' : ''}">${escapeHtml(t.text)}</span>
-    <button class="todo-pause-btn ${waitForUser ? 'active' : ''}" onclick="toggleWaitForUser('${t.id}')" title="${waitForUser ? 'Pause activée — attend le user après cette tâche' : 'Cliquer pour pauser après cette tâche'}">⏸</button>
-    <button class="todo-send-btn" onclick="sendTodoToLog('${t.id}')">→ envoyer</button>
+    <button class="todo-pause-btn ${waitForUser ? 'active' : ''}" onclick="toggleWaitForUser('${t.id}')" title="${waitForUser ? 'Pause enabled — waits for user after this task' : 'Click to pause after this task'}">⏸</button>
+    <button class="todo-send-btn" onclick="sendTodoToLog('${t.id}')">→ send</button>
     <button class="todo-del-btn" onclick="deleteTodo('${t.id}')">×</button>
   </div>`;
 }
@@ -2058,16 +2058,16 @@ function renderPromptArea(projectId, status) {
     startThinkingTimer();
   }
   return `<div class="prompt-area">
-    ${isProcessing ? `<div class="thinking-indicator"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span> Claude réfléchit... <span class="thinking-timer" id="thinkingTimer"></span></div>` : ''}
-    ${hasQueued ? `<div class="queued-indicator">⏳ Prompt en attente — sera envoyé dès que Claude a fini</div>` : ''}
+    ${isProcessing ? `<div class="thinking-indicator"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span> Claude is thinking... <span class="thinking-timer" id="thinkingTimer"></span></div>` : ''}
+    ${hasQueued ? `<div class="queued-indicator">⏳ Prompt queued — will be sent when Claude finishes</div>` : ''}
     <textarea class="prompt-input" id="promptInput"
-              placeholder="${isProcessing ? 'Écrire le prochain prompt (sera envoyé après)...' : 'Envoyer un prompt à Claude... (Enter pour envoyer, Shift+Enter pour nouvelle ligne)'}"
+              placeholder="${isProcessing ? 'Write your next prompt (will be sent after)...' : 'Send a prompt to Claude... (Enter to send, Shift+Enter for new line)'}"
               onkeydown="handlePromptKey(event, '${projectId}')"
               rows="1"
               oninput="autoResize(this)"></textarea>
     <div style="display:flex;gap:6px;align-items:center">
-      <button class="btn-send" onclick="sendPrompt('${projectId}')">envoyer</button>
-      ${isProcessing ? `<button class="btn-stop" onclick="stopProject('${projectId}')" title="Arrêter Claude">■</button>` : ''}
+      <button class="btn-send" onclick="sendPrompt('${projectId}')">send</button>
+      ${isProcessing ? `<button class="btn-stop" onclick="stopProject('${projectId}')" title="Stop Claude">■</button>` : ''}
     </div>
   </div>`;
 }
@@ -2115,7 +2115,7 @@ async function stopProject(projectId) {
   if (btn && !btn._confirming) {
     btn._confirming = true;
     const orig = btn.innerHTML;
-    btn.innerHTML = 'Confirmer ?';
+    btn.innerHTML = 'Confirm?';
     setTimeout(() => { btn._confirming = false; btn.innerHTML = orig; }, 2000);
     return;
   }
@@ -2189,7 +2189,7 @@ async function sendPrompt(projectId) {
       body: JSON.stringify({ prompt })
     });
   } catch (e) {
-    if (btn) { btn.disabled = false; btn.textContent = 'envoyer'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'send'; }
     if (input) input.value = prompt;
   }
 }
@@ -2252,11 +2252,11 @@ function updateBulkPreview() {
   if (items.length === 0) {
     preview.innerHTML = '';
     btn.disabled = true;
-    btn.textContent = 'importer';
+    btn.textContent = 'import';
   } else {
-    preview.innerHTML = `<strong>${items.length}</strong> tâche${items.length > 1 ? 's' : ''} détectée${items.length > 1 ? 's' : ''}`;
+    preview.innerHTML = `<strong>${items.length}</strong> task${items.length > 1 ? 's' : ''} detected`;
     btn.disabled = false;
-    btn.textContent = `importer ${items.length} tâche${items.length > 1 ? 's' : ''}`;
+    btn.textContent = `import ${items.length} task${items.length > 1 ? 's' : ''}`;
   }
 }
 
@@ -2264,11 +2264,11 @@ async function copyPreprompt() {
   const el = document.getElementById('bulkPreprompt');
   const btn = document.getElementById('prepromptCopyBtn');
   // Get text content without the button text
-  const text = el.textContent.replace('copier', '').replace('copié !', '').trim();
+  const text = el.textContent.replace('copy', '').replace('copied!', '').trim();
   try {
     await navigator.clipboard.writeText(text);
-    btn.textContent = 'copié !';
-    setTimeout(() => btn.textContent = 'copier', 2000);
+    btn.textContent = 'copied!';
+    setTimeout(() => btn.textContent = 'copy', 2000);
   } catch {
     // Fallback
     const range = document.createRange();
@@ -2286,7 +2286,7 @@ async function submitBulkImport() {
 
   const btn = document.getElementById('bulkImportBtn');
   btn.disabled = true;
-  btn.textContent = 'import en cours...';
+  btn.textContent = 'importing...';
 
   const res = await authFetch(`/api/todos/${state.activeProject}/bulk`, {
     method: 'POST',
@@ -2346,7 +2346,7 @@ async function sendTodoToLog(todoId) {
   if (!todo) return;
   const chatId = getActiveChat(state.activeProject);
   if (getActiveChatStatus(state.activeProject) === 'running') {
-    showToast('Claude est déjà en train de travailler', 'info');
+    showToast('Claude is already working', 'info');
     return;
   }
   await authFetch(`/api/send/${state.activeProject}/${chatId}`, {
@@ -2506,14 +2506,14 @@ function updateTodoQueueUI() {
     bar.className = 'todo-queue-bar';
     bar.innerHTML = `
       <div class="todo-queue-info">
-        <span class="todo-queue-progress">${done}/${total} tâches</span>
-        <span class="todo-queue-next">Prochaine : ${escapeHtml(q.todos[q.currentIndex]?.text || '').substring(0, 60)}</span>
+        <span class="todo-queue-progress">${done}/${total} tasks</span>
+        <span class="todo-queue-next">Next: ${escapeHtml(q.todos[q.currentIndex]?.text || '').substring(0, 60)}</span>
       </div>
       <div class="todo-queue-actions">
-        <input class="todo-queue-input" id="queueResponseInput" placeholder="Répondre à Claude avant de continuer..."
+        <input class="todo-queue-input" id="queueResponseInput" placeholder="Reply to Claude before continuing..."
                onkeydown="if(event.key==='Enter')respondAndContinue()">
-        <button class="btn-queue-continue" onclick="continueTodoQueue()">▶ Continuer</button>
-        <button class="btn-queue-stop" onclick="stopTodoQueue()">■ Arrêter</button>
+        <button class="btn-queue-continue" onclick="continueTodoQueue()">▶ Continue</button>
+        <button class="btn-queue-stop" onclick="stopTodoQueue()">■ Stop</button>
       </div>
     `;
     const promptArea = document.querySelector('.prompt-area');
@@ -2538,7 +2538,7 @@ function renderTodoList() {
   const list = document.getElementById('todoList');
   if (!list) return;
   list.innerHTML = todos.length === 0
-    ? `<div class="todo-empty">Aucune tâche — ajoute des todos à envoyer à Claude</div>`
+    ? `<div class="todo-empty">No tasks — add todos to send to Claude</div>`
     : todos.map(t => renderTodoItem(t)).join('');
 }
 
@@ -2589,23 +2589,23 @@ async function checkVersion() {
 async function updateApp() {
   const btn = document.getElementById('updateBtn');
   btn.disabled = true;
-  btn.textContent = '↑ mise à jour...';
+  btn.textContent = '↑ updating...';
   try {
     const data = await authFetch('/api/update', { method: 'POST' }).then(r => r.json());
     if (data.ok) {
       btn.textContent = '✓ v' + data.version;
       btn.style.borderColor = 'var(--green)';
-      showToast('Mise à jour appliquée — redémarre le serveur pour finaliser', 'success');
+      showToast('Update applied — restart the server to finalize', 'success');
       // Refresh version display
       const tag = document.getElementById('versionTag');
       tag.textContent = `v${data.version}`;
     } else {
-      throw new Error(data.error || 'Erreur inconnue');
+      throw new Error(data.error || 'Unknown error');
     }
   } catch (e) {
-    btn.textContent = '✗ erreur';
-    showToast('Échec de la mise à jour : ' + e.message, 'error');
-    setTimeout(() => { btn.textContent = '↑ mise à jour'; btn.disabled = false; }, 3000);
+    btn.textContent = '✗ error';
+    showToast('Update failed: ' + e.message, 'error');
+    setTimeout(() => { btn.textContent = '↑ update'; btn.disabled = false; }, 3000);
   }
 }
 
@@ -2617,10 +2617,10 @@ async function openCreateProject() {
   document.getElementById('createProjectError').style.display = 'none';
   const dirEl = document.getElementById('createProjectDir');
   dirEl.dataset.base = dir;
-  dirEl.textContent = dir ? `Sera créé dans : ${dir}/` : 'Aucun dossier parent configuré — configure-le dans ⚙ config';
+  dirEl.textContent = dir ? `Will be created in: ${dir}/` : 'No parent directory configured — set it in ⚙ config';
   document.getElementById('createProjectModal').classList.add('visible');
   if (!dir) {
-    document.getElementById('createProjectError').textContent = 'Configure d\'abord un dossier parent dans ⚙ config';
+    document.getElementById('createProjectError').textContent = 'Set a parent directory in ⚙ config first';
     document.getElementById('createProjectError').style.display = 'block';
   }
   setTimeout(() => document.getElementById('createProjectName').focus(), 100);
@@ -2631,9 +2631,9 @@ function updateCreateProjectPreview() {
   const dirEl = document.getElementById('createProjectDir');
   const base = dirEl.dataset.base || '';
   if (base && name) {
-    dirEl.textContent = `Sera créé dans : ${base}/${name}`;
+    dirEl.textContent = `Will be created in: ${base}/${name}`;
   } else if (base) {
-    dirEl.textContent = `Sera créé dans : ${base}/`;
+    dirEl.textContent = `Will be created in: ${base}/`;
   }
 }
 
@@ -2645,7 +2645,7 @@ async function createProject() {
   const name = document.getElementById('createProjectName').value.trim();
   const errorEl = document.getElementById('createProjectError');
   if (!name) {
-    errorEl.textContent = 'Le nom du projet est requis';
+    errorEl.textContent = 'Project name is required';
     errorEl.style.display = 'block';
     return;
   }
@@ -2657,7 +2657,7 @@ async function createProject() {
     });
     const data = await res.json();
     if (!res.ok) {
-      errorEl.textContent = data.error || 'Erreur lors de la création';
+      errorEl.textContent = data.error || 'Failed to create project';
       errorEl.style.display = 'block';
       return;
     }
@@ -2667,9 +2667,9 @@ async function createProject() {
     closeCreateProject();
     renderSidebar();
     selectProject(data.project.id);
-    showToast(`Projet "${name}" créé`);
+    showToast(`Project "${name}" created`);
   } catch (err) {
-    errorEl.textContent = 'Erreur réseau';
+    errorEl.textContent = 'Network error';
     errorEl.style.display = 'block';
   }
 }
@@ -2689,7 +2689,7 @@ function closeSettings() {
 function renderProjectListManage(projects) {
   const el = document.getElementById('projectListManage');
   if (projects.length === 0) {
-    el.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:8px">Aucun projet configuré — lance un scan</div>`;
+    el.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:8px">No projects configured — run a scan</div>`;
     return;
   }
   el.innerHTML = projects.map(p => `
@@ -2729,7 +2729,7 @@ async function scanRepos() {
 function renderScanResults() {
   const el = document.getElementById('scanResults');
   if (state.scanResults.length === 0) {
-    el.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:8px">Aucun repo git trouvé dans ce dossier</div>`;
+    el.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:8px">No git repositories found in this directory</div>`;
     return;
   }
   el.innerHTML = state.scanResults.map(r => `

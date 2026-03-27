@@ -328,7 +328,7 @@ function spawnClaude(projectId, chatId, project, prompt) {
     console.error(`[${key}] Spawn error:`, err.message);
     if (processes[key]) {
       processes[key].status = 'idle';
-      const entry = { logType: 'stderr', text: `Erreur: ${err.message}`, ts: Date.now() };
+      const entry = { logType: 'stderr', text: `Error: ${err.message}`, ts: Date.now() };
       processes[key].logs.push(entry);
       broadcast({ type: 'log', projectId, chatId, ...entry });
     }
@@ -417,7 +417,7 @@ function parseClaudeEvent(projectId, chatId, event) {
       }
     }
     if (isResume) return null;
-    return { logType: 'system', text: `Session démarrée (${event.model})`, ts };
+    return { logType: 'system', text: `Session started (${event.model})`, ts };
   }
 
   if (event.type === 'assistant' && event.message?.content) {
@@ -454,7 +454,7 @@ function parseClaudeEvent(projectId, chatId, event) {
     const duration = event.duration_ms ? `${(event.duration_ms / 1000).toFixed(1)}s` : '';
     if (processes[key]) processes[key].status = 'idle';
     broadcast({ type: 'status', projectId, chatId, status: 'idle' });
-    return { logType: 'result', text: `✓ Terminé ${duration}`, ts };
+    return { logType: 'result', text: `✓ Done ${duration}`, ts };
   }
 
   return null;
