@@ -2726,9 +2726,12 @@ function renderClaudeAuthDetails(data) {
     el.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)">
         <span style="color:${statusColor}">● ${statusText}</span>
-        <button class="btn" style="font-size:11px;padding:3px 8px" onclick="runClaudeLogin()">claude login</button>
+        ${data.loginStatus === 'logged_in' ? `<button class="btn" style="font-size:11px;padding:3px 8px" onclick="claudeLogout()">logout</button>` : ''}
       </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:4px">Uses your Claude Max/Pro subscription. No API billing.</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">
+        Uses your Claude Max/Pro subscription. No API billing.
+        ${data.loginStatus !== 'logged_in' ? '<br>To login, run <code style="background:var(--bg);padding:1px 4px;border-radius:3px">claude login</code> on your server terminal (requires a browser).' : ''}
+      </div>
     `;
   } else {
     el.innerHTML = `
@@ -2777,19 +2780,16 @@ async function saveApiKey() {
   }
 }
 
-async function runClaudeLogin() {
-  showToast('Running claude login...', 'info');
+async function claudeLogout() {
+  if (!confirm('Log out of your Claude subscription on this server?')) return;
   try {
-    const res = await authFetch('/api/claude-login', { method: 'POST' });
-    const data = await res.json();
-    if (data.ok) {
-      showToast('Login command executed. Check server terminal if a browser link was shown.', 'success');
+    const res = await authFetch('/api/claude-logout', { method: 'POST' });
+    if (res.ok) {
+      showToast('Logged out', 'success');
       loadClaudeAuthPanel();
-    } else {
-      showToast(data.error || 'Login failed', 'error');
     }
   } catch (e) {
-    showToast('Login request failed', 'error');
+    showToast('Logout failed', 'error');
   }
 }
 

@@ -199,21 +199,35 @@ app.post('/api/config', (req, res) => {
 
 // ── Claude auth mode ────────────────────────────────────────────────────────
 app.get('/api/claude-auth', (req, res) => {
-  const hasApiKey = !!(process.env.ANTHROPIC_API_KEY);
-  let loginStatus = 'unknown';
   try {
-    const output = execSync('claude auth status 2>&1 || true', { timeout: 5000 }).toString();
-    if (output.includes('Logged in') || output.includes('authenticated') || output.includes('Active')) {
-      loginStatus = 'logged_in';
-    } else {
-      loginStatus = 'not_logged_in';
-    }
-  } catch (e) {
-    loginStatus = 'unknown';
-  }
+    const hasApiKey = !!(process.env.ANTHROPIC_API_KEY);
+    const mode = hasApiKey ? 'api_key' : 'subscription';
+    const apiKeyPreview = hasApiKey && process.env.ANTHROPIC_API_KEY.length >= 8
+      ? '...' + process.env.ANTHROPIC_API_KEY.slice(-8)
+      : null;
 
-  const mode = hasApiKey ? 'api_key' : 'subscription';
-  res.json({ mode, hasApiKey, loginStatus, apiKeyPreview: hasApiKey ? '...' + process.env.ANTHROPIC_API_KEY.slice(-8) : null });
+    // Detect login status via ~/.claude credentials file (reliable, no CLI call)
+    let loginStatus = 'unknown';
+    try {
+      const home = process.env.HOME || require('os').homedir();
+      const credPaths = [
+        path.join(home, '.claude', '.credentials.json'),
+        path.join(home, '.config', 'claude', 'credentials.json'),
+        path.join(home, '.claude.json')
+      ];
+      const hasCreds = credPaths.some(p => {
+        try { return fs.existsSync(p) && fs.statSync(p).size > 0; }
+        catch { return false; }
+      });
+      loginStatus = hasCreds ? 'logged_in' : 'not_logged_in';
+    } catch (e) {
+      loginStatus = 'unknown';
+    }
+
+    res.json({ mode, hasApiKey, loginStatus, apiKeyPreview });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post('/api/claude-auth', (req, res) => {
@@ -253,11 +267,10 @@ app.post('/api/claude-auth', (req, res) => {
   }
 });
 
-app.post('/api/claude-login', (req, res) => {
+app.post('/api/claude-logout', (req, res) => {
   try {
-    // claude login in non-interactive mode outputs a URL
-    const output = execSync('claude login --no-open 2>&1 || true', { timeout: 15000 }).toString();
-    res.json({ ok: true, output });
+    execSync('claude logout 2>&1 || true', { timeout: 5000 });
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
