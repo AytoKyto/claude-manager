@@ -197,6 +197,72 @@ app.post('/api/config', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Claude auth mode ────────────────────────────────────────────────────────
+app.get('/api/claude-auth', (req, res) => {
+  const hasApiKey = !!(process.env.ANTHROPIC_API_KEY);
+  let loginStatus = 'unknown';
+  try {
+    const output = execSync('claude auth status 2>&1 || true', { timeout: 5000 }).toString();
+    if (output.includes('Logged in') || output.includes('authenticated') || output.includes('Active')) {
+      loginStatus = 'logged_in';
+    } else {
+      loginStatus = 'not_logged_in';
+    }
+  } catch (e) {
+    loginStatus = 'unknown';
+  }
+
+  const mode = hasApiKey ? 'api_key' : 'subscription';
+  res.json({ mode, hasApiKey, loginStatus, apiKeyPreview: hasApiKey ? '...' + process.env.ANTHROPIC_API_KEY.slice(-8) : null });
+});
+
+app.post('/api/claude-auth', (req, res) => {
+  const { mode, apiKey } = req.body;
+  const envPath = path.join(__dirname, '.env');
+
+  let envContent = '';
+  if (fs.existsSync(envPath)) {
+    envContent = fs.readFileSync(envPath, 'utf8');
+  }
+
+  if (mode === 'api_key') {
+    if (!apiKey || !apiKey.startsWith('sk-ant-')) {
+      return res.status(400).json({ error: 'Invalid API key format (must start with sk-ant-)' });
+    }
+    // Update or add ANTHROPIC_API_KEY in .env
+    if (envContent.includes('ANTHROPIC_API_KEY=')) {
+      envContent = envContent.replace(/ANTHROPIC_API_KEY=.*/g, `ANTHROPIC_API_KEY=${apiKey}`);
+    } else {
+      envContent += `\nANTHROPIC_API_KEY=${apiKey}\n`;
+    }
+    fs.writeFileSync(envPath, envContent);
+    process.env.ANTHROPIC_API_KEY = apiKey;
+    res.json({ ok: true, mode: 'api_key', needRestart: false });
+
+  } else if (mode === 'subscription') {
+    // Remove ANTHROPIC_API_KEY from .env
+    if (envContent.includes('ANTHROPIC_API_KEY=')) {
+      envContent = envContent.replace(/\n?ANTHROPIC_API_KEY=.*\n?/g, '\n');
+      fs.writeFileSync(envPath, envContent.trim() + '\n');
+    }
+    delete process.env.ANTHROPIC_API_KEY;
+    res.json({ ok: true, mode: 'subscription', needRestart: false });
+
+  } else {
+    res.status(400).json({ error: 'Invalid mode. Use "api_key" or "subscription"' });
+  }
+});
+
+app.post('/api/claude-login', (req, res) => {
+  try {
+    // claude login in non-interactive mode outputs a URL
+    const output = execSync('claude login --no-open 2>&1 || true', { timeout: 15000 }).toString();
+    res.json({ ok: true, output });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Create project ──────────────────────────────────────────────────────────
 app.post('/api/create-project', (req, res) => {
   const config = loadConfig();
