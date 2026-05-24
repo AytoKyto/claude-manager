@@ -276,6 +276,187 @@ app.post('/api/claude-logout', (req, res) => {
   }
 });
 
+// ── Models registry ─────────────────────────────────────────────────────────
+const MODELS = {
+  claude: {
+    id: 'claude',
+    label: 'Claude',
+    provider: 'anthropic'
+  },
+  minimax: {
+    id: 'minimax',
+    label: 'MiniMax',
+    provider: 'minimax',
+    baseUrl: 'https://api.minimax.io/anthropic',
+    defaultModel: 'MiniMax-M2'
+  }
+};
+
+// ── Profiles registry ────────────────────────────────────────────────────────
+const DEFAULT_PROFILES = {
+  dev: {
+    id: 'dev',
+    name: 'Dev',
+    icon: '⌨️',
+    category: 'dev',
+    systemPrompt: 'Tu es un développeur expert. Écris du code propre, maintenable, avec des tests. Sois concis et focalisé sur la qualité technique. Explique brièvement tes choix d\'architecture.'
+  },
+  design: {
+    id: 'design',
+    name: 'Design UI/UX',
+    icon: '🎨',
+    category: 'design',
+    systemPrompt: 'Tu es un designer produit. Privilégie l\'accessibilité, la cohérence visuelle, et les bonnes pratiques UI/UX. Propose des palettes de couleurs, typographies, et composants whenever pertinent.'
+  },
+  communication: {
+    id: 'communication',
+    name: 'Communication',
+    icon: '💬',
+    category: 'communication',
+    systemPrompt: 'Tu es un rédacteur expert. Adapte le ton au public cible, structure le contenu avec des titres clairs, et privilégie un style friendly mais professionnel.'
+  },
+  seo: {
+    id: 'seo',
+    name: 'SEO',
+    icon: '🔍',
+    category: 'seo',
+    systemPrompt: 'Tu es un consultant SEO. Optimise pour les moteurs de recherche : méta tags, structure des titres, mots-clés, performances, et SEO technique. Explique l\'impact de chaque suggestion.'
+  },
+  debug: {
+    id: 'debug',
+    name: 'Debug',
+    icon: '🔧',
+    category: 'dev',
+    systemPrompt: 'Tu es un développeur spécialisé en debug. Analyse la cause racine, demande les logs pertinents, et fournis des étapes de reproduction claires. Sois méthodique.'
+  }
+};
+
+function getProfile(id) {
+  return DEFAULT_PROFILES[id] || null;
+}
+
+app.get('/api/models', (req, res) => {
+  const list = Object.values(MODELS).map(m => {
+    if (m.id === 'minimax') {
+      return { id: m.id, label: m.label, available: !!process.env.MINIMAX_API_KEY };
+    }
+    return { id: m.id, label: m.label, available: true };
+  });
+  res.json({ models: list });
+});
+
+// ── Profiles ────────────────────────────────────────────────────────────────
+function loadCustomProfiles() {
+  try {
+    const config = loadConfig();
+    return config.customProfiles || [];
+  } catch { return []; }
+}
+
+function saveCustomProfiles(profiles) {
+  const config = loadConfig();
+  config.customProfiles = profiles;
+  saveConfig(config);
+}
+
+app.get('/api/profiles', (req, res) => {
+  const custom = loadCustomProfiles();
+  const all = [...Object.values(DEFAULT_PROFILES), ...custom];
+  res.json({ profiles: all });
+});
+
+app.post('/api/profiles', (req, res) => {
+  const { name, icon, category, systemPrompt } = req.body;
+  if (!name || !systemPrompt) {
+    return res.status(400).json({ error: 'name and systemPrompt required' });
+  }
+  const custom = loadCustomProfiles();
+  const id = name.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Date.now();
+  const newProfile = { id, name, icon: icon || '📝', category: category || 'custom', systemPrompt, isCustom: true };
+  custom.push(newProfile);
+  saveCustomProfiles(custom);
+  res.json({ profile: newProfile });
+});
+
+app.patch('/api/profiles/:id', (req, res) => {
+  const { id } = req.params;
+  const { name, icon, category, systemPrompt } = req.body;
+  const custom = loadCustomProfiles();
+  const idx = custom.findIndex(p => p.id === id);
+  if (idx === -1) {
+    return res.status(404).json({ error: 'Custom profile not found' });
+  }
+  if (name) custom[idx].name = name;
+  if (icon) custom[idx].icon = icon;
+  if (category) custom[idx].category = category;
+  if (systemPrompt) custom[idx].systemPrompt = systemPrompt;
+  saveCustomProfiles(custom);
+  res.json({ profile: custom[idx] });
+});
+
+app.delete('/api/profiles/:id', (req, res) => {
+  const { id } = req.params;
+  const custom = loadCustomProfiles();
+  const filtered = custom.filter(p => p.id !== id);
+  if (filtered.length === custom.length) {
+    return res.status(404).json({ error: 'Custom profile not found' });
+  }
+  saveCustomProfiles(filtered);
+  res.json({ ok: true });
+});
+
+// ── Minimax auth ────────────────────────────────────────────────────────────
+app.get('/api/minimax-auth', (req, res) => {
+  try {
+    const hasKey = !!process.env.MINIMAX_API_KEY;
+    const keyPreview = hasKey && process.env.MINIMAX_API_KEY.length >= 8
+      ? '...' + process.env.MINIMAX_API_KEY.slice(-8)
+      : null;
+    res.json({
+      configured: hasKey,
+      keyPreview,
+      model: process.env.MINIMAX_MODEL || MODELS.minimax.defaultModel
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/minimax-auth', (req, res) => {
+  const { apiKey, model } = req.body;
+  const envPath = path.join(__dirname, '.env');
+  let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+
+  if (apiKey !== undefined) {
+    if (apiKey && !apiKey.startsWith('sk-')) {
+      return res.status(400).json({ error: 'Invalid API key format' });
+    }
+    if (apiKey) {
+      if (envContent.includes('MINIMAX_API_KEY=')) {
+        envContent = envContent.replace(/MINIMAX_API_KEY=.*/g, `MINIMAX_API_KEY=${apiKey}`);
+      } else {
+        envContent += `\nMINIMAX_API_KEY=${apiKey}\n`;
+      }
+      process.env.MINIMAX_API_KEY = apiKey;
+    } else {
+      envContent = envContent.replace(/\n?MINIMAX_API_KEY=.*\n?/g, '\n');
+      delete process.env.MINIMAX_API_KEY;
+    }
+  }
+
+  if (model !== undefined && model) {
+    if (envContent.includes('MINIMAX_MODEL=')) {
+      envContent = envContent.replace(/MINIMAX_MODEL=.*/g, `MINIMAX_MODEL=${model}`);
+    } else {
+      envContent += `\nMINIMAX_MODEL=${model}\n`;
+    }
+    process.env.MINIMAX_MODEL = model;
+  }
+
+  fs.writeFileSync(envPath, envContent.trim() + '\n');
+  res.json({ ok: true, configured: !!process.env.MINIMAX_API_KEY });
+});
+
 // ── Create project ──────────────────────────────────────────────────────────
 app.post('/api/create-project', (req, res) => {
   const config = loadConfig();
@@ -329,10 +510,16 @@ app.post('/api/chats/:projectId', (req, res) => {
   const project = config.projects.find(p => p.id === req.params.projectId);
   if (!project) return res.status(404).json({ error: 'Not found' });
   if (!project.chats) project.chats = [];
+  const requestedModel = req.body.model;
+  const model = (requestedModel && MODELS[requestedModel]) ? requestedModel : 'claude';
+  const requestedProfile = req.body.profile;
+  const profile = (requestedProfile && getProfile(requestedProfile)) ? requestedProfile : 'dev';
   const chat = {
     id: Date.now().toString(),
     name: req.body.name || `Chat ${project.chats.length + 1}`,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    model,
+    profile
   };
   project.chats.push(chat);
   saveConfig(config);
@@ -362,30 +549,76 @@ app.patch('/api/chats/:projectId/:chatId', (req, res) => {
   const chat = (project.chats || []).find(c => c.id === req.params.chatId);
   if (!chat) return res.status(404).json({ error: 'Chat not found' });
   if (req.body.name !== undefined) chat.name = req.body.name;
+  if (req.body.model !== undefined && MODELS[req.body.model]) {
+    if (chat.model !== req.body.model) {
+      chat.model = req.body.model;
+      delete chat.lastSessionId;
+      const key = procKey(req.params.projectId, req.params.chatId);
+      if (processes[key]) {
+        if (processes[key].proc) try { processes[key].proc.kill(); } catch {}
+        processes[key].sessionId = null;
+        processes[key].status = 'idle';
+      }
+      broadcast({ type: 'status', projectId: req.params.projectId, chatId: req.params.chatId, status: 'idle' });
+    }
+  }
+  if (req.body.profile !== undefined && getProfile(req.body.profile)) {
+    if (chat.profile !== req.body.profile) {
+      chat.profile = req.body.profile;
+      delete chat.lastSessionId;
+      const key = procKey(req.params.projectId, req.params.chatId);
+      if (processes[key]) {
+        if (processes[key].proc) try { processes[key].proc.kill(); } catch {}
+        processes[key].sessionId = null;
+        processes[key].status = 'idle';
+      }
+      broadcast({ type: 'status', projectId: req.params.projectId, chatId: req.params.chatId, status: 'idle' });
+    }
+  }
   saveConfig(config);
   res.json({ chat });
 });
 
 // ── Claude process spawn ────────────────────────────────────────────────────
+function buildSpawnEnv(chatModel) {
+  const env = { ...process.env };
+  if (chatModel === 'minimax') {
+    if (!process.env.MINIMAX_API_KEY) {
+      throw new Error('MINIMAX_API_KEY not configured — set it in Settings');
+    }
+    env.ANTHROPIC_BASE_URL = MODELS.minimax.baseUrl;
+    env.ANTHROPIC_AUTH_TOKEN = process.env.MINIMAX_API_KEY;
+    env.ANTHROPIC_MODEL = process.env.MINIMAX_MODEL || MODELS.minimax.defaultModel;
+    delete env.ANTHROPIC_API_KEY;
+  }
+  return env;
+}
+
 function spawnClaude(projectId, chatId, project, prompt) {
   const key = procKey(projectId, chatId);
 
-  // Load sessionId from config if not in memory
-  if (!processes[key]?.sessionId) {
-    try {
-      const cfg = loadConfig();
-      const proj = cfg.projects.find(p => p.id === projectId);
-      const chat = (proj?.chats || []).find(c => c.id === chatId);
-      if (chat?.lastSessionId) {
-        if (!processes[key]) {
-          processes[key] = { proc: null, logs: [], status: 'idle', sessionId: chat.lastSessionId, chatId, startedAt: new Date().toISOString() };
-        } else {
-          processes[key].sessionId = chat.lastSessionId;
-        }
-      }
-    } catch (e) {
-      console.error(`[${key}] Failed to load sessionId from config:`, e.message);
+  let chatModel = 'claude';
+  let chatProfile = 'dev';
+  let fullPrompt = prompt;
+  try {
+    const cfg = loadConfig();
+    const proj = cfg.projects.find(p => p.id === projectId);
+    const chat = (proj?.chats || []).find(c => c.id === chatId);
+    if (chat?.model && MODELS[chat.model]) chatModel = chat.model;
+    if (chat?.profile && getProfile(chat.profile)) {
+      chatProfile = chat.profile;
+      const profileData = getProfile(chatProfile);
+      fullPrompt = profileData.systemPrompt + '\n\n---\n\n' + prompt;
     }
+    if (chat?.lastSessionId && !processes[key]?.sessionId) {
+      if (!processes[key]) {
+        processes[key] = { proc: null, logs: [], status: 'idle', sessionId: chat.lastSessionId, chatId, startedAt: new Date().toISOString() };
+      } else {
+        processes[key].sessionId = chat.lastSessionId;
+      }
+    }
+  } catch (e) {
+    console.error(`[${key}] Failed to load chat from config:`, e.message);
   }
 
   const args = ['--print', '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
@@ -394,13 +627,26 @@ function spawnClaude(projectId, chatId, project, prompt) {
     args.push('--resume', processes[key].sessionId);
   }
 
+  let spawnEnv;
+  try {
+    spawnEnv = buildSpawnEnv(chatModel);
+  } catch (err) {
+    console.error(`[${key}] Spawn env error:`, err.message);
+    const entry = { logType: 'stderr', text: `Error: ${err.message}`, ts: Date.now() };
+    if (!processes[key]) processes[key] = { proc: null, logs: [], status: 'idle', sessionId: null, chatId, startedAt: new Date().toISOString() };
+    processes[key].logs.push(entry);
+    broadcast({ type: 'log', projectId, chatId, ...entry });
+    broadcast({ type: 'status', projectId, chatId, status: 'idle' });
+    return null;
+  }
+
   const proc = spawn('claude', args, {
     cwd: project.path,
-    env: { ...process.env },
+    env: spawnEnv,
     stdio: ['pipe', 'pipe', 'pipe']
   });
 
-  proc.stdin.write(prompt);
+  proc.stdin.write(fullPrompt);
   proc.stdin.end();
 
   proc.on('error', (err) => {

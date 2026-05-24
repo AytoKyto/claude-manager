@@ -364,6 +364,94 @@
     gap: 8px;
   }
 
+  .model-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .model-badge:hover { color: var(--text); border-color: var(--border2); }
+  .model-badge.minimax {
+    color: #fbbf24;
+    border-color: rgba(251,191,36,0.3);
+    background: rgba(251,191,36,0.08);
+  }
+
+  .profile-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .profile-badge:hover { color: var(--text); border-color: var(--border2); }
+  .profile-badge.dev { color: #60a5fa; border-color: rgba(96,165,250,0.3); background: rgba(96,165,250,0.08); }
+  .profile-badge.design { color: #f472b6; border-color: rgba(244,114,182,0.3); background: rgba(244,114,182,0.08); }
+  .profile-badge.communication { color: #34d399; border-color: rgba(52,211,153,0.3); background: rgba(52,211,153,0.08); }
+  .profile-badge.seo { color: #a78bfa; border-color: rgba(167,139,250,0.3); background: rgba(167,139,250,0.08); }
+  .profile-badge.debug { color: #fb923c; border-color: rgba(251,146,60,0.3); background: rgba(251,146,60,0.08); }
+
+  .chat-tab-model {
+    font-family: var(--mono);
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(251,191,36,0.12);
+    color: #fbbf24;
+    border: 1px solid rgba(251,191,36,0.25);
+    margin-left: 4px;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+  }
+  .chat-tab-profile {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 4px;
+    letter-spacing: 0.3px;
+  }
+
+  .model-picker-popover {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    padding: 6px;
+    min-width: 180px;
+    font-size: 13px;
+  }
+  .model-picker-title {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 6px 8px 4px;
+  }
+  .model-picker-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    cursor: pointer;
+    border-radius: 5px;
+    color: var(--text);
+  }
+  .model-picker-option:hover { background: var(--bg3); }
+  .model-picker-option.active { color: var(--accent); }
+  .model-picker-option.disabled { color: var(--muted); cursor: not-allowed; opacity: 0.6; }
+  .model-picker-check { color: var(--accent); }
+
   .btn {
     padding: 6px 14px;
     border-radius: 6px;
@@ -1444,6 +1532,13 @@
       </div>
     </div>
 
+    <div class="form-group" style="border-top:1px solid var(--border);padding-top:1rem;margin-top:0.5rem">
+      <label class="form-label">MiniMax (alternative model)</label>
+      <div id="minimaxAuthPanel" style="display:flex;flex-direction:column;gap:8px">
+        <div style="color:var(--muted);font-size:12px">Loading...</div>
+      </div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn" onclick="closeSettings()">cancel</button>
       <button class="btn btn-primary" onclick="saveSettings()">save</button>
@@ -1703,6 +1798,15 @@ async function checkAuthAndInit() {
 }
 
 async function init() {
+  // Load profiles first
+  try {
+    const data = await authFetch('/api/profiles').then(r => r.json());
+    state._profileLabels = {};
+    (data.profiles || []).forEach(p => {
+      state._profileLabels[p.id] = p.icon ? `${p.icon} ${p.name}` : p.name;
+    });
+  } catch { state._profileLabels = {}; }
+
   const config = await authFetch('/api/config').then(r => r.json());
   state.projects = config.projects || [];
   const statuses = await authFetch('/api/status').then(r => r.json());
@@ -1876,6 +1980,185 @@ async function createChat(projectId) {
   await selectChat(projectId, chat.id);
 }
 
+// ── Per-chat model picker ──────────────────────────────────────────────────
+function closeModelPicker() {
+  document.querySelectorAll('.model-picker-popover').forEach(el => el.remove());
+}
+
+async function openModelPicker(event, projectId, chatId) {
+  event.stopPropagation();
+  closeModelPicker();
+  closeProfilePicker();
+
+  const chats = state.chats[projectId] || [];
+  const chat = chats.find(c => c.id === chatId);
+  if (!chat) return;
+  const currentModel = chat.model || 'claude';
+
+  let minimaxConfigured = false;
+  try {
+    const data = await authFetch('/api/minimax-auth').then(r => r.json());
+    minimaxConfigured = data.configured;
+  } catch {}
+
+  const popover = document.createElement('div');
+  popover.className = 'model-picker-popover';
+  const claudeActive = currentModel === 'claude';
+  const minimaxActive = currentModel === 'minimax';
+  popover.innerHTML = `
+    <div class="model-picker-title">Model for this chat</div>
+    <div class="model-picker-option ${claudeActive ? 'active' : ''}" data-model="claude">
+      <span>Claude</span><span class="model-picker-check">${claudeActive ? '✓' : ''}</span>
+    </div>
+    <div class="model-picker-option ${minimaxActive ? 'active' : ''} ${!minimaxConfigured ? 'disabled' : ''}" data-model="${minimaxConfigured ? 'minimax' : ''}">
+      <span>MiniMax${minimaxConfigured ? '' : ' (not configured)'}</span><span class="model-picker-check">${minimaxActive ? '✓' : ''}</span>
+    </div>
+  `;
+
+  popover.querySelectorAll('.model-picker-option').forEach(opt => {
+    opt.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const m = opt.dataset.model;
+      if (!m) {
+        showToast('Configure MiniMax in Settings first', 'error');
+        return;
+      }
+      switchChatModel(projectId, chatId, m);
+    });
+  });
+
+  const rect = event.currentTarget.getBoundingClientRect();
+  popover.style.position = 'fixed';
+  popover.style.top = (rect.bottom + 4) + 'px';
+  popover.style.left = rect.left + 'px';
+  popover.style.zIndex = '1000';
+  document.body.appendChild(popover);
+
+  setTimeout(() => {
+    document.addEventListener('click', closeModelPicker, { once: true });
+  }, 0);
+}
+
+async function switchChatModel(projectId, chatId, model) {
+  closeModelPicker();
+  const chats = state.chats[projectId] || [];
+  const chat = chats.find(c => c.id === chatId);
+  if (!chat || (chat.model || 'claude') === model) return;
+
+  const status = (state.statuses[projectId] || {})[chatId];
+  if (status === 'running') {
+    if (!confirm('A process is running on this chat. Switching the model will stop it. Continue?')) return;
+  }
+
+  const res = await authFetch(`/api/chats/${projectId}/${chatId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ model })
+  });
+
+  if (res.ok) {
+    chat.model = model;
+    delete chat.lastSessionId;
+    showToast(`Switched to ${model === 'minimax' ? 'MiniMax' : 'Claude'}`, 'success');
+    if (state.activeProject === projectId) renderProjectView();
+  } else {
+    const err = await res.json().catch(() => ({}));
+    showToast(err.error || 'Model switch failed', 'error');
+  }
+}
+
+// ── Per-chat profile picker ────────────────────────────────────────────────
+function closeProfilePicker() {
+  document.querySelectorAll('.profile-picker-popover').forEach(el => el.remove());
+}
+
+async function openProfilePicker(event, projectId, chatId) {
+  event.stopPropagation();
+  closeProfilePicker();
+  closeModelPicker();
+
+  const chats = state.chats[projectId] || [];
+  const chat = chats.find(c => c.id === chatId);
+  if (!chat) return;
+  const currentProfile = chat.profile || 'dev';
+
+  let profiles = [];
+  try {
+    const data = await authFetch('/api/profiles').then(r => r.json());
+    profiles = data.profiles || [];
+  } catch { profiles = []; }
+
+  const categories = {};
+  profiles.forEach(p => {
+    const cat = p.category || 'custom';
+    if (!categories[cat]) categories[cat] = [];
+    categories[cat].push(p);
+  });
+
+  const popover = document.createElement('div');
+  popover.className = 'model-picker-popover profile-picker-popover';
+  const catLabels = { dev: 'Développement', design: 'Design', communication: 'Communication', seo: 'SEO', custom: 'Custom' };
+
+  let html = `<div class="model-picker-title">Profile for this chat</div>`;
+  Object.entries(categories).forEach(([cat, items]) => {
+    html += `<div class="model-picker-title" style="margin-top:8px">${catLabels[cat] || cat}</div>`;
+    items.forEach(p => {
+      const active = p.id === currentProfile;
+      const label = p.icon ? `${p.icon} ${p.name}` : p.name;
+      html += `<div class="model-picker-option ${active ? 'active' : ''}" data-profile="${p.id}">
+        <span>${escapeHtml(label)}</span><span class="model-picker-check">${active ? '✓' : ''}</span>
+      </div>`;
+    });
+  });
+  popover.innerHTML = html;
+
+  popover.querySelectorAll('.model-picker-option').forEach(opt => {
+    opt.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const profile = opt.dataset.profile;
+      switchChatProfile(projectId, chatId, profile);
+    });
+  });
+
+  const rect = event.currentTarget.getBoundingClientRect();
+  popover.style.position = 'fixed';
+  popover.style.top = (rect.bottom + 4) + 'px';
+  popover.style.left = rect.left + 'px';
+  popover.style.zIndex = '1000';
+  document.body.appendChild(popover);
+
+  setTimeout(() => {
+    document.addEventListener('click', closeProfilePicker, { once: true });
+  }, 0);
+}
+
+async function switchChatProfile(projectId, chatId, profile) {
+  closeProfilePicker();
+  const chats = state.chats[projectId] || [];
+  const chat = chats.find(c => c.id === chatId);
+  if (!chat || (chat.profile || 'dev') === profile) return;
+
+  const status = (state.statuses[projectId] || {})[chatId];
+  if (status === 'running') {
+    if (!confirm('A process is running on this chat. Switching the profile will stop it. Continue?')) return;
+  }
+
+  const res = await authFetch(`/api/chats/${projectId}/${chatId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ profile })
+  });
+
+  if (res.ok) {
+    chat.profile = profile;
+    delete chat.lastSessionId;
+    const profileLabel = state._profileLabels?.[profile] || profile;
+    showToast(`Switched to ${profileLabel}`, 'success');
+    if (state.activeProject === projectId) renderProjectView();
+  } else {
+    const err = await res.json().catch(() => ({}));
+    showToast(err.error || 'Profile switch failed', 'error');
+  }
+}
+
 async function deleteChat(projectId, chatId) {
   const chats = state.chats[projectId] || [];
   if (chats.length <= 1) return; // Keep at least one chat
@@ -1905,6 +2188,12 @@ function renderProjectView() {
   const pendingTodos = todos.filter(t => !t.done).length;
   const chats = state.chats[project.id] || [];
 
+  const activeChat = chats.find(c => c.id === chatId);
+  const activeModel = activeChat?.model || 'claude';
+  const activeModelLabel = activeModel === 'minimax' ? 'MiniMax' : 'Claude';
+  const activeProfile = activeChat?.profile || 'dev';
+  const activeProfileLabel = state._profileLabels?.[activeProfile] || activeProfile;
+
   document.getElementById('mainContent').innerHTML = `
     <div class="project-view">
       <div class="project-header" id="projectHeader">
@@ -1912,6 +2201,8 @@ function renderProjectView() {
         <span class="project-title">${escapeHtml(project.name)}</span>
         <span class="project-path-badge">${escapeHtml(project.path)}</span>
         <span class="status-badge ${status}" id="statusBadge">${status}</span>
+        <span class="model-badge ${activeModel}" id="modelBadge" onclick="openModelPicker(event, '${project.id}', '${chatId}')" title="Click to change model">${activeModelLabel}</span>
+        <span class="profile-badge ${activeProfile}" id="profileBadge" onclick="openProfilePicker(event, '${project.id}', '${chatId}')" title="Click to change profile">${activeProfileLabel}</span>
         <div class="header-actions">
           ${status === 'running'
             ? `<button class="btn btn-stop" onclick="stopProject('${project.id}')">■ stop</button>`
@@ -1924,9 +2215,14 @@ function renderProjectView() {
         ${chats.map(c => {
           const cStatus = (state.statuses[project.id] || {})[c.id] || 'idle';
           const isActive = c.id === chatId;
+          const cModel = c.model || 'claude';
+          const cProfile = c.profile || 'dev';
+          const cProfileLabel = state._profileLabels?.[cProfile] || cProfile;
           return `<div class="chat-tab ${isActive ? 'active' : ''}" onclick="selectChat('${project.id}', '${c.id}')">
             <span class="chat-status-dot ${cStatus}" id="chat-dot-${c.id}"></span>
             <span class="chat-tab-name">${escapeHtml(c.name)}</span>
+            ${cModel === 'minimax' ? `<span class="chat-tab-model" title="MiniMax">M</span>` : ''}
+            <span class="chat-tab-profile profile-badge ${cProfile}" title="${cProfile}">${cProfileLabel}</span>
             ${chats.length > 1 ? `<span class="chat-tab-close" onclick="event.stopPropagation();deleteChat('${project.id}','${c.id}')">×</span>` : ''}
           </div>`;
         }).join('')}
@@ -2688,6 +2984,7 @@ async function openSettings() {
   document.getElementById('settingsModal').classList.add('visible');
   state._editingProjects = [...(config.projects || [])];
   loadClaudeAuthPanel();
+  loadMinimaxAuthPanel();
 }
 
 function closeSettings() {
@@ -2791,6 +3088,89 @@ async function claudeLogout() {
   } catch (e) {
     showToast('Logout failed', 'error');
   }
+}
+
+// ── Minimax auth management ────────────────────────────────────────────────
+async function loadMinimaxAuthPanel() {
+  const panel = document.getElementById('minimaxAuthPanel');
+  try {
+    const data = await authFetch('/api/minimax-auth').then(r => r.json());
+    const statusColor = data.configured ? 'var(--green)' : 'var(--muted)';
+    const statusText = data.configured ? 'Configured' : 'Not configured';
+    panel.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)">
+        <span style="color:${statusColor}">● ${statusText}</span>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input class="form-input" id="minimaxKeyInput" type="password" placeholder="sk-api-..."
+               value="${data.keyPreview || ''}" style="flex:1;font-size:12px;padding:6px 10px">
+        <button class="btn" style="font-size:11px;padding:4px 10px" onclick="saveMinimaxKey()">save</button>
+        ${data.configured ? `<button class="btn" style="font-size:11px;padding:4px 10px;color:var(--red)" onclick="clearMinimaxKey()">clear</button>` : ''}
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <label style="font-size:11px;color:var(--muted);min-width:50px">Model:</label>
+        <select id="minimaxModelInput" class="form-input" style="flex:1;font-size:12px;padding:5px 8px" onchange="saveMinimaxModel(this.value)">
+          <option value="MiniMax-M2" ${data.model === 'MiniMax-M2' ? 'selected' : ''}>MiniMax-M2</option>
+          <option value="MiniMax-M2.7" ${data.model === 'MiniMax-M2.7' ? 'selected' : ''}>MiniMax-M2.7</option>
+        </select>
+      </div>
+      <div style="font-size:11px;color:var(--muted)">
+        Endpoint: <code style="background:var(--bg);padding:1px 4px;border-radius:3px">api.minimax.io/anthropic</code>.
+        Per-chat usage: select MiniMax in the chat's model picker.
+      </div>
+    `;
+  } catch (e) {
+    panel.innerHTML = '<div style="color:var(--red);font-size:12px">Failed to load Minimax status</div>';
+  }
+}
+
+async function saveMinimaxKey() {
+  const input = document.getElementById('minimaxKeyInput');
+  const apiKey = input.value.trim();
+  if (!apiKey) {
+    showToast('Enter a key', 'error');
+    return;
+  }
+  if (apiKey.startsWith('...')) {
+    // Preview shown — user didn't change it
+    showToast('Enter the full key (preview shown)', 'error');
+    return;
+  }
+  if (!apiKey.startsWith('sk-')) {
+    showToast('Invalid key format', 'error');
+    return;
+  }
+  const res = await authFetch('/api/minimax-auth', {
+    method: 'POST',
+    body: JSON.stringify({ apiKey })
+  });
+  if (res.ok) {
+    showToast('Minimax key saved', 'success');
+    loadMinimaxAuthPanel();
+  } else {
+    const err = await res.json().catch(() => ({}));
+    showToast(err.error || 'Save failed', 'error');
+  }
+}
+
+async function clearMinimaxKey() {
+  if (!confirm('Remove the Minimax API key?')) return;
+  const res = await authFetch('/api/minimax-auth', {
+    method: 'POST',
+    body: JSON.stringify({ apiKey: '' })
+  });
+  if (res.ok) {
+    showToast('Minimax key removed', 'success');
+    loadMinimaxAuthPanel();
+  }
+}
+
+async function saveMinimaxModel(model) {
+  await authFetch('/api/minimax-auth', {
+    method: 'POST',
+    body: JSON.stringify({ model })
+  });
+  showToast('Model updated', 'success');
 }
 
 function renderProjectListManage(projects) {
